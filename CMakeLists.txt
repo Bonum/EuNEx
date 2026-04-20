@@ -1,19 +1,18 @@
 cmake_minimum_required(VERSION 3.16)
-project(EuNEx VERSION 0.1.0 LANGUAGES CXX)
+project(EuNEx VERSION 0.2.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # ── Options ──────────────────────────────────────────────────────────
-option(EUNEX_USE_SIMPLX "Build with real Simplx framework (OFF = embedded shim)" OFF)
+option(EUNEX_USE_SIMPLX "Build with real Simplx framework (OFF = embedded engine)" OFF)
+option(EUNEX_USE_KAFKA  "Build with Kafka persistence (requires librdkafka)" OFF)
 option(EUNEX_BUILD_TESTS "Build test binaries" ON)
 option(EUNEX_BUILD_EXAMPLES "Build example binaries" ON)
 
 # ── Simplx dependency ───────────────────────────────────────────────
 if(EUNEX_USE_SIMPLX)
-    # When you have the real Simplx checked out:
-    #   cmake -DEUNEX_USE_SIMPLX=ON -DSIMPLX_ROOT=/path/to/simplx ..
     find_path(SIMPLX_INCLUDE_DIR simplx.h
         HINTS ${SIMPLX_ROOT}/include /usr/local/include)
     if(NOT SIMPLX_INCLUDE_DIR)
@@ -21,33 +20,54 @@ if(EUNEX_USE_SIMPLX)
     endif()
     include_directories(${SIMPLX_INCLUDE_DIR})
     add_compile_definitions(EUNEX_REAL_SIMPLX=1)
-else()
-    # Use our lightweight Simplx-compatible shim for development
-    include_directories(${CMAKE_SOURCE_DIR}/src/engine)
+endif()
+
+# ── Kafka dependency ────────────────────────────────────────────────
+if(EUNEX_USE_KAFKA)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(RDKAFKA QUIET rdkafka rdkafka++)
+    endif()
+
+    if(NOT RDKAFKA_FOUND)
+        find_library(RDKAFKA_LIB rdkafka HINTS /usr/lib /usr/local/lib)
+        find_library(RDKAFKA_CXX_LIB rdkafka++ HINTS /usr/lib /usr/local/lib)
+        find_path(RDKAFKA_INCLUDE_DIR librdkafka/rdkafkacpp.h
+            HINTS /usr/include /usr/local/include)
+        if(RDKAFKA_LIB AND RDKAFKA_CXX_LIB AND RDKAFKA_INCLUDE_DIR)
+            set(RDKAFKA_LIBRARIES ${RDKAFKA_CXX_LIB} ${RDKAFKA_LIB})
+            set(RDKAFKA_INCLUDE_DIRS ${RDKAFKA_INCLUDE_DIR})
+        else()
+            message(FATAL_ERROR "librdkafka not found. Install librdkafka-dev.")
+        endif()
+    endif()
+
+    add_compile_definitions(EUNEX_USE_KAFKA=1)
+    include_directories(${RDKAFKA_INCLUDE_DIRS})
 endif()
 
 include_directories(${CMAKE_SOURCE_DIR}/src)
 
 # ── Core library ────────────────────────────────────────────────────
-add_library(eunex_core STATIC
-    src/common/Types.hpp
-    src/common/OrderBook.hpp
+set(EUNEX_CORE_SOURCES
     src/common/OrderBook.cpp
-    src/engine/SimplxShim.hpp
-    src/actors/OrderBookActor.hpp
     src/actors/OrderBookActor.cpp
-    src/actors/OEGatewayActor.hpp
     src/actors/OEGatewayActor.cpp
-    src/actors/MarketDataActor.hpp
     src/actors/MarketDataActor.cpp
-    src/recovery/RecoveryProxy.hpp
     src/recovery/RecoveryProxy.cpp
-    src/iaca/Fragment.hpp
-    src/iaca/IacaAggregator.hpp
     src/iaca/IacaAggregator.cpp
 )
 
+add_library(eunex_core STATIC ${EUNEX_CORE_SOURCES})
 target_include_directories(eunex_core PUBLIC ${CMAKE_SOURCE_DIR}/src)
+
+if(EUNEX_USE_KAFKA)
+    target_link_libraries(eunex_core PUBLIC ${RDKAFKA_LIBRARIES})
+endif()
+
+# Thread support
+find_package(Threads REQUIRED)
+target_link_libraries(eunex_core PUBLIC Threads::Threads)
 
 # ── Main executable ─────────────────────────────────────────────────
 add_executable(eunex_me src/main.cpp)
@@ -65,6 +85,7 @@ endif()
 # ── Tests ───────────────────────────────────────────────────────────
 if(EUNEX_BUILD_TESTS)
     enable_testing()
+
     add_executable(test_orderbook tests/test_orderbook.cpp)
     target_link_libraries(test_orderbook PRIVATE eunex_core)
     add_test(NAME OrderBookTest COMMAND test_orderbook)
@@ -72,4 +93,8 @@ if(EUNEX_BUILD_TESTS)
     add_executable(test_matching_engine tests/test_matching_engine.cpp)
     target_link_libraries(test_matching_engine PRIVATE eunex_core)
     add_test(NAME MatchingEngineTest COMMAND test_matching_engine)
+
+    add_executable(test_threaded_engine tests/test_threaded_engine.cpp)
+    target_link_libraries(test_threaded_engine PRIVATE eunex_core)
+    add_test(NAME ThreadedEngineTest COMMAND test_threaded_engine)
 endif()

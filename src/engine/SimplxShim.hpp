@@ -1,20 +1,20 @@
 #pragma once
 // ════════════════════════════════════════════════════════════════════
-// Simplx-Compatible Shim
+// Simplx-Compatible Actor Engine
 //
-// A lightweight, single-threaded emulation of the Simplx actor
-// framework API. Allows development and testing without the real
-// Simplx dependency. When EUNEX_REAL_SIMPLX is defined, this file
-// is not used — #include "simplx.h" directly.
+// Multi-threaded actor framework emulating the Simplx API.
+// Each logical core runs on its own OS thread with a mailbox queue
+// for cross-core event delivery.
+//
+// Modes:
+//   - Synchronous: events delivered inline (for unit tests)
+//   - Threaded: events queued to destination core's mailbox
+//
+// The Engine controls the mode: actors created outside an Engine
+// use synchronous delivery; Engine::runFor() uses threaded mode.
 //
 // Emulates: Actor, Event, Event::Pipe, Service, Callback, ActorId,
 //           Engine, StartSequence, CoreSet.
-//
-// Limitations vs real Simplx:
-//   - Single-threaded: all actors run on one "core"
-//   - No cross-core shared memory, no cache-line optimizations
-//   - No real CPU pinning or red/blue zone scheduling
-//   - Events delivered synchronously on push (not batched)
 // ════════════════════════════════════════════════════════════════════
 
 #ifdef EUNEX_REAL_SIMPLX
@@ -25,17 +25,21 @@
 #include <functional>
 #include <memory>
 #include <vector>
+#include <deque>
 #include <unordered_map>
+#include <map>
 #include <typeindex>
 #include <typeinfo>
 #include <cassert>
 #include <iostream>
 #include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
 #include <chrono>
 
 namespace tredzone {
 
-// ── Forward declarations ───────────────────────────────────────────
 class Actor;
 class Engine;
 
@@ -58,7 +62,63 @@ template<> struct hash<tredzone::ActorId> {
 
 namespace tredzone {
 
-// ── Global actor registry (shim-only) ──────────────────────────────
+// ── Thread-safe mailbox for cross-core event delivery ──────────────
+class Mailbox {
+public:
+    using Task = std::function<void()>;
+
+    void enqueue(Task task) {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            queue_.push_back(std::move(task));
+        }
+        cv_.notify_one();
+    }
+
+    void drainAll() {
+        std::deque<Task> batch;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            batch.swap(queue_);
+        }
+        for (auto& task : batch) task();
+    }
+
+    bool waitAndDrain(std::chrono::milliseconds timeout) {
+        std::deque<Task> batch;
+        {
+            std::unique_lock<std::mutex> lock(mutex_);
+            if (queue_.empty()) {
+                cv_.wait_for(lock, timeout, [this] { return !queue_.empty() || shutdown_; });
+            }
+            if (shutdown_ && queue_.empty()) return false;
+            batch.swap(queue_);
+        }
+        for (auto& task : batch) task();
+        return true;
+    }
+
+    void shutdown() {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            shutdown_ = true;
+        }
+        cv_.notify_all();
+    }
+
+    size_t pending() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return queue_.size();
+    }
+
+private:
+    mutable std::mutex mutex_;
+    std::condition_variable cv_;
+    std::deque<Task> queue_;
+    bool shutdown_ = false;
+};
+
+// ── Global actor registry ──────────────────────────────────────────
 class ActorRegistry {
 public:
     static ActorRegistry& instance() {
@@ -69,32 +129,59 @@ public:
     uint64_t nextId() { return ++nextId_; }
 
     void registerActor(const ActorId& id, Actor* actor) {
+        std::lock_guard<std::mutex> lock(mutex_);
         actors_[id] = actor;
     }
 
     void unregisterActor(const ActorId& id) {
+        std::lock_guard<std::mutex> lock(mutex_);
         actors_.erase(id);
     }
 
     Actor* findActor(const ActorId& id) {
+        std::lock_guard<std::mutex> lock(mutex_);
         auto it = actors_.find(id);
         return it != actors_.end() ? it->second : nullptr;
     }
 
-    // Service registry
     void registerService(std::type_index tag, const ActorId& id) {
+        std::lock_guard<std::mutex> lock(mutex_);
         services_[tag] = id;
     }
 
     ActorId getService(std::type_index tag) const {
+        std::lock_guard<std::mutex> lock(mutex_);
         auto it = services_.find(tag);
         return it != services_.end() ? it->second : ActorId{};
     }
 
+    // Core mailbox management
+    Mailbox* getMailbox(uint8_t coreId) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = mailboxes_.find(coreId);
+        return it != mailboxes_.end() ? it->second : nullptr;
+    }
+
+    void registerMailbox(uint8_t coreId, Mailbox* mbox) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        mailboxes_[coreId] = mbox;
+    }
+
+    void unregisterMailbox(uint8_t coreId) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        mailboxes_.erase(coreId);
+    }
+
+    bool isThreadedMode() const { return threadedMode_.load(); }
+    void setThreadedMode(bool v) { threadedMode_.store(v); }
+
 private:
-    uint64_t nextId_ = 0;
+    std::atomic<uint64_t> nextId_{0};
+    mutable std::mutex mutex_;
     std::unordered_map<ActorId, Actor*> actors_;
     std::unordered_map<std::type_index, ActorId> services_;
+    std::unordered_map<uint8_t, Mailbox*> mailboxes_;
+    std::atomic<bool> threadedMode_{false};
 };
 
 // ── Service tag base ───────────────────────────────────────────────
@@ -103,13 +190,10 @@ struct AsyncService {};
 // ── Actor base class ───────────────────────────────────────────────
 class Actor {
 public:
-    // ── Event base ─────────────────────────────────────────────────
     struct Event {
         ActorId sourceActorId_;
-
         const ActorId& getSourceActorId() const { return sourceActorId_; }
 
-        // ── Pipe ───────────────────────────────────────────────────
         class Pipe {
         public:
             Pipe(Actor& source, const ActorId& dest)
@@ -121,14 +205,34 @@ public:
                 evt->sourceActorId_ = source_.getActorId();
                 EventT& ref = *evt;
 
-                Actor* dest = ActorRegistry::instance().findActor(destId_);
-                if (dest) {
-                    dest->deliverEvent(std::type_index(typeid(EventT)),
-                                       static_cast<Event*>(evt.release()));
-                } else {
+                auto& reg = ActorRegistry::instance();
+                Actor* dest = reg.findActor(destId_);
+
+                if (!dest) {
                     source_.deliverUndelivered(std::type_index(typeid(EventT)),
                                                static_cast<Event*>(evt.release()));
+                    return ref;
                 }
+
+                auto typeIdx = std::type_index(typeid(EventT));
+
+                if (reg.isThreadedMode() && dest->getCore() != source_.getCore()) {
+                    // Cross-core: enqueue to destination core's mailbox
+                    Mailbox* mbox = reg.getMailbox(dest->getCore());
+                    if (mbox) {
+                        Actor* destPtr = dest;
+                        Event* rawEvt = evt.release();
+                        mbox->enqueue([destPtr, typeIdx, rawEvt]() {
+                            destPtr->deliverEvent(typeIdx, rawEvt);
+                        });
+                    } else {
+                        dest->deliverEvent(typeIdx, static_cast<Event*>(evt.release()));
+                    }
+                } else {
+                    // Same core or synchronous mode: deliver inline
+                    dest->deliverEvent(typeIdx, static_cast<Event*>(evt.release()));
+                }
+
                 return ref;
             }
 
@@ -140,7 +244,6 @@ public:
             ActorId destId_;
         };
 
-        // ── Batch (stub) ──────────────────────────────────────────
         class Batch {
         public:
             Batch(Pipe&) {}
@@ -148,7 +251,6 @@ public:
         };
     };
 
-    // ── Callback ───────────────────────────────────────────────────
     class Callback {
     public:
         virtual ~Callback() = default;
@@ -168,7 +270,6 @@ public:
     const ActorId& getActorId() const { return actorId_; }
     uint8_t getCore() const { return actorId_.coreId; }
 
-    // Event handler registration
     template<typename EventT, typename HandlerT>
     void registerEventHandler(HandlerT& handler) {
         eventHandlers_[std::type_index(typeid(EventT))] =
@@ -191,7 +292,6 @@ public:
         pendingCallbacks_.push_back(&cb);
     }
 
-    // Create child actors (same core in shim)
     template<typename ActorT, typename... Args>
     ActorId newUnreferencedActor(Args&&... args) {
         auto actor = std::make_unique<ActorT>(std::forward<Args>(args)...);
@@ -202,13 +302,11 @@ public:
 
     template<typename ActorT, typename... Args>
     std::shared_ptr<ActorT> newReferencedActor(Args&&... args) {
-        auto actor = std::make_shared<ActorT>(std::forward<Args>(args)...);
-        return actor;
+        return std::make_shared<ActorT>(std::forward<Args>(args)...);
     }
 
     void requestDestroy() { destroyRequested_ = true; }
 
-    // ── ServiceIndex (accessed via getEngine()) ────────────────────
     class ServiceIndex {
     public:
         template<typename ServiceTag>
@@ -219,7 +317,6 @@ public:
         }
     };
 
-    // Shim: engine reference not needed, service index is global
     struct EngineProxy {
         ServiceIndex serviceIndex;
         ServiceIndex& getServiceIndex() { return serviceIndex; }
@@ -233,9 +330,7 @@ public:
     void processPendingCallbacks() {
         auto cbs = std::move(pendingCallbacks_);
         pendingCallbacks_.clear();
-        for (auto* cb : cbs) {
-            cb->onCallback();
-        }
+        for (auto* cb : cbs) cb->onCallback();
     }
 
 private:
@@ -269,8 +364,7 @@ private:
     }
 };
 
-// ── Engine ─────────────────────────────────────────────────────────
-
+// ── Engine — multi-threaded actor scheduler ────────────────────────
 class Engine {
 public:
     struct CoreSet {
@@ -285,59 +379,129 @@ public:
 
         template<typename ActorT, typename... Args>
         void addActor(int coreId, Args&&... args) {
-            factories_.push_back([coreId, ... a = std::forward<Args>(args)]() mutable {
+            int core = coreId;
+            factories_.push_back([core, ... a = std::forward<Args>(args)]() mutable {
                 auto actor = std::make_unique<ActorT>(std::move(a)...);
-                actor->actorId_.coreId = static_cast<uint8_t>(coreId);
-                return actor;
+                actor->actorId_.coreId = static_cast<uint8_t>(core);
+                return std::make_pair(core, std::move(actor));
             });
         }
 
         template<typename ServiceTag, typename ActorT, typename... Args>
         void addServiceActor(int coreId, Args&&... args) {
-            factories_.push_back([coreId, ... a = std::forward<Args>(args)]() mutable {
+            int core = coreId;
+            factories_.push_back([core, ... a = std::forward<Args>(args)]() mutable {
                 auto actor = std::make_unique<ActorT>(std::move(a)...);
-                actor->actorId_.coreId = static_cast<uint8_t>(coreId);
+                actor->actorId_.coreId = static_cast<uint8_t>(core);
                 ActorRegistry::instance().registerService(
                     std::type_index(typeid(ServiceTag)), actor->getActorId());
-                return actor;
+                return std::make_pair(core, std::move(actor));
             });
         }
 
         void setRedZoneCore(int) {}
         void setBlueZoneCore(int) {}
 
-        std::vector<std::function<std::unique_ptr<Actor>()>> factories_;
+        using Factory = std::function<std::pair<int, std::unique_ptr<Actor>>()>;
+        std::vector<Factory> factories_;
     };
 
     explicit Engine(StartSequence& seq) {
         for (auto& factory : seq.factories_) {
-            actors_.push_back(factory());
+            auto result = factory();
+            coreActors_[result.first].push_back(std::move(result.second));
         }
+
+        for (auto it = coreActors_.begin(); it != coreActors_.end(); ++it) {
+            auto mbox = std::make_unique<Mailbox>();
+            ActorRegistry::instance().registerMailbox(
+                static_cast<uint8_t>(it->first), mbox.get());
+            mailboxes_[it->first] = std::move(mbox);
+        }
+
         running_ = true;
     }
 
     ~Engine() {
-        running_ = false;
-        // Destroy in reverse order (services last)
-        while (!actors_.empty()) actors_.pop_back();
-    }
-
-    void runFor(std::chrono::milliseconds duration) {
-        auto end = std::chrono::steady_clock::now() + duration;
-        while (running_ && std::chrono::steady_clock::now() < end) {
-            for (auto& actor : actors_) {
-                actor->processPendingCallbacks();
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        stop();
+        for (auto& t : threads_) {
+            if (t.joinable()) t.join();
+        }
+        ActorRegistry::instance().setThreadedMode(false);
+        for (auto it = mailboxes_.begin(); it != mailboxes_.end(); ++it) {
+            ActorRegistry::instance().unregisterMailbox(static_cast<uint8_t>(it->first));
+        }
+        for (auto it = coreActors_.rbegin(); it != coreActors_.rend(); ++it) {
+            while (!it->second.empty()) it->second.pop_back();
         }
     }
 
-    void stop() { running_ = false; }
+    void runFor(std::chrono::milliseconds duration) {
+        ActorRegistry::instance().setThreadedMode(true);
+
+        auto deadline = std::chrono::steady_clock::now() + duration;
+
+        for (auto it = coreActors_.begin(); it != coreActors_.end(); ++it) {
+            int coreId = it->first;
+            Mailbox* mbox = mailboxes_[coreId].get();
+            auto* actorList = &it->second;
+            threads_.emplace_back([mbox, actorList, deadline, this]() {
+                while (running_ && std::chrono::steady_clock::now() < deadline) {
+                    mbox->waitAndDrain(std::chrono::milliseconds(5));
+                    for (auto& actor : *actorList) {
+                        actor->processPendingCallbacks();
+                    }
+                }
+            });
+
+#ifdef __linux__
+            if (threads_.back().joinable()) {
+                cpu_set_t cpuset;
+                CPU_ZERO(&cpuset);
+                CPU_SET(coreId, &cpuset);
+                pthread_setaffinity_np(threads_.back().native_handle(),
+                                       sizeof(cpu_set_t), &cpuset);
+            }
+#endif
+        }
+
+        std::this_thread::sleep_for(duration);
+        stop();
+
+        for (auto& t : threads_) {
+            if (t.joinable()) t.join();
+        }
+        threads_.clear();
+        ActorRegistry::instance().setThreadedMode(false);
+    }
+
+    void stop() {
+        running_ = false;
+        for (auto it = mailboxes_.begin(); it != mailboxes_.end(); ++it) {
+            it->second->shutdown();
+        }
+    }
+
     bool isRunning() const { return running_; }
 
+    size_t coreCount() const { return coreActors_.size(); }
+
+    void drain() {
+        for (auto it = mailboxes_.begin(); it != mailboxes_.end(); ++it) {
+            it->second->drainAll();
+        }
+        for (auto it = coreActors_.begin(); it != coreActors_.end(); ++it) {
+            for (auto& actor : it->second) {
+                actor->processPendingCallbacks();
+            }
+        }
+    }
+
 private:
-    std::vector<std::unique_ptr<Actor>> actors_;
-    bool running_ = false;
+    std::map<int, std::vector<std::unique_ptr<Actor>>> coreActors_;
+    std::map<int, std::unique_ptr<Mailbox>> mailboxes_;
+    std::vector<std::thread> threads_;
+    std::atomic<bool> running_{false};
 };
 
 } // namespace tredzone
