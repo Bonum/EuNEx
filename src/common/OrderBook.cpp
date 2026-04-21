@@ -100,6 +100,8 @@ void OrderBook::matchBuy(Order& incoming, const TradeCallback& onTrade,
             trade.sellOrderId = orderIt->orderId;
             trade.buyClOrdId  = incoming.clOrdId;
             trade.sellClOrdId = orderIt->clOrdId;
+            trade.buySessionId  = incoming.sessionId;
+            trade.sellSessionId = orderIt->sessionId;
             trade.matchTime   = nowNs();
             onTrade(trade);
 
@@ -155,6 +157,8 @@ void OrderBook::matchSell(Order& incoming, const TradeCallback& onTrade,
             trade.sellOrderId = incoming.orderId;
             trade.buyClOrdId  = orderIt->clOrdId;
             trade.sellClOrdId = incoming.clOrdId;
+            trade.buySessionId  = orderIt->sessionId;
+            trade.sellSessionId = incoming.sessionId;
             trade.matchTime   = nowNs();
             onTrade(trade);
 

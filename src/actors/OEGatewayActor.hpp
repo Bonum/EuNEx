@@ -41,8 +41,13 @@ public:
                       SymbolIndex_t symbolIdx, Price_t newPrice,
                       Quantity_t newQty, SessionId_t session);
 
-    // Handle execution reports coming back from OrderBookActor
+    void onEvent(const NewOrderEvent& event);
+    void onEvent(const CancelOrderEvent& event);
+    void onEvent(const ModifyOrderEvent& event);
     void onEvent(const ExecReportEvent& event);
+
+    // Subscribe to execution reports (FIXGateway, AITrader, etc.)
+    void addExecReportSubscriber(const tredzone::ActorId& subscriberId);
 
     // Access received reports (for testing / downstream forwarding)
     const std::vector<ExecReportEvent>& getReports() const { return reports_; }
@@ -50,6 +55,7 @@ public:
 
 private:
     std::unordered_map<SymbolIndex_t, tredzone::ActorId> symbolMap_;
+    std::vector<tredzone::ActorId> execReportSubscribers_;
     std::vector<ExecReportEvent> reports_;
     ClOrdId_t nextClOrdId_ = 1000;
 };

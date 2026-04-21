@@ -29,6 +29,7 @@ using ClOrdId_t     = uint64_t;
 using SymbolIndex_t = uint32_t;
 using TradeId_t     = uint64_t;
 using SessionId_t   = uint16_t;
+using MemberId_t    = uint16_t;
 
 // ── Enumerations matching Optiq/SBE definitions ────────────────────
 enum class Side : uint8_t {
@@ -104,6 +105,8 @@ struct Trade {
     ClOrdId_t     buyClOrdId;
     ClOrdId_t     sellClOrdId;
     Timestamp_ns  matchTime;
+    SessionId_t   buySessionId;
+    SessionId_t   sellSessionId;
 };
 #pragma pack(pop)
 
@@ -117,6 +120,13 @@ struct ExecutionReport {
     Price_t      lastPrice;
     Quantity_t   lastQty;
     TradeId_t    tradeId;
+};
+
+// ── Member holding (for Clearing House) ───────────────────────────
+struct MemberHolding {
+    SymbolIndex_t symbolIdx;
+    int64_t       quantity;
+    Price_t       avgCost;
 };
 
 // ── Symbol definition ──────────────────────────────────────────────

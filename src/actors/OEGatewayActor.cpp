@@ -3,6 +3,9 @@
 namespace eunex {
 
 OEGatewayActor::OEGatewayActor() {
+    registerEventHandler<NewOrderEvent>(*this);
+    registerEventHandler<CancelOrderEvent>(*this);
+    registerEventHandler<ModifyOrderEvent>(*this);
     registerEventHandler<ExecReportEvent>(*this);
 }
 
@@ -43,8 +46,31 @@ void OEGatewayActor::submitModify(OrderId_t orderId, ClOrdId_t origClOrdId,
     pipe.push<ModifyOrderEvent>(orderId, origClOrdId, symbolIdx, newPrice, newQty, session);
 }
 
+void OEGatewayActor::onEvent(const NewOrderEvent& event) {
+    submitNewOrder(event.clOrdId, event.symbolIdx, event.side, event.ordType,
+                    event.tif, event.price, event.quantity, event.sessionId);
+}
+
+void OEGatewayActor::onEvent(const CancelOrderEvent& event) {
+    submitCancel(event.orderId, event.origClOrdId, event.symbolIdx, event.sessionId);
+}
+
+void OEGatewayActor::onEvent(const ModifyOrderEvent& event) {
+    submitModify(event.orderId, event.origClOrdId, event.symbolIdx,
+                  event.newPrice, event.newQuantity, event.sessionId);
+}
+
+void OEGatewayActor::addExecReportSubscriber(const tredzone::ActorId& subscriberId) {
+    execReportSubscribers_.push_back(subscriberId);
+}
+
 void OEGatewayActor::onEvent(const ExecReportEvent& event) {
     reports_.push_back(event);
+
+    for (auto& subId : execReportSubscribers_) {
+        Event::Pipe pipe(*this, subId);
+        pipe.push<ExecReportEvent>(event);
+    }
 }
 
 } // namespace eunex

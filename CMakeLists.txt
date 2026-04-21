@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(EuNEx VERSION 0.2.0 LANGUAGES CXX)
+project(EuNEx VERSION 0.4.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -54,6 +54,9 @@ set(EUNEX_CORE_SOURCES
     src/actors/OrderBookActor.cpp
     src/actors/OEGatewayActor.cpp
     src/actors/MarketDataActor.cpp
+    src/actors/ClearingHouseActor.cpp
+    src/actors/FIXGatewayActor.cpp
+    src/actors/AITraderActor.cpp
     src/recovery/RecoveryProxy.cpp
     src/iaca/IacaAggregator.cpp
 )
@@ -68,6 +71,11 @@ endif()
 # Thread support
 find_package(Threads REQUIRED)
 target_link_libraries(eunex_core PUBLIC Threads::Threads)
+
+# Windows socket library
+if(WIN32)
+    target_link_libraries(eunex_core PUBLIC ws2_32)
+endif()
 
 # ── Main executable ─────────────────────────────────────────────────
 add_executable(eunex_me src/main.cpp)
@@ -97,4 +105,16 @@ if(EUNEX_BUILD_TESTS)
     add_executable(test_threaded_engine tests/test_threaded_engine.cpp)
     target_link_libraries(test_threaded_engine PRIVATE eunex_core)
     add_test(NAME ThreadedEngineTest COMMAND test_threaded_engine)
+
+    add_executable(test_clearing_house tests/test_clearing_house.cpp)
+    target_link_libraries(test_clearing_house PRIVATE eunex_core)
+    add_test(NAME ClearingHouseTest COMMAND test_clearing_house)
+
+    add_executable(test_fix_gateway tests/test_fix_gateway.cpp)
+    target_link_libraries(test_fix_gateway PRIVATE eunex_core)
+    add_test(NAME FIXGatewayTest COMMAND test_fix_gateway)
+
+    add_executable(test_ai_trader tests/test_ai_trader.cpp)
+    target_link_libraries(test_ai_trader PRIVATE eunex_core)
+    add_test(NAME AITraderTest COMMAND test_ai_trader)
 endif()

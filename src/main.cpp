@@ -3,135 +3,214 @@
 //
 // Multi-threaded actor topology (mirrors Optiq architecture):
 //
-//   Core 0: OEGatewayActor (Order Entry — receives external orders)
+//   Core 0: OEGatewayActor + FIXGatewayActor
 //   Core 1: OrderBookActor per symbol (matching engine)
-//   Core 2: MarketDataActor (publishes book updates, trades)
+//   Core 2: MarketDataActor
+//   Core 3: ClearingHouseActor + AITraderActor
 //
 // Optiq equivalent topology:
 //   OEActor → LogicalCoreActor (Book) → MDLimit → MDIMP
 //                                     → OE Ack (back to OEActor)
+//                                     → ClearingHouse (via Kafka/PTB)
 // ════════════════════════════════════════════════════════════════════
 
 #include "engine/SimplxShim.hpp"
 #include "actors/OrderBookActor.hpp"
 #include "actors/OEGatewayActor.hpp"
 #include "actors/MarketDataActor.hpp"
+#include "actors/ClearingHouseActor.hpp"
+#include "actors/FIXGatewayActor.hpp"
+#include "actors/AITraderActor.hpp"
 #include <iostream>
+#include <thread>
+#include <chrono>
+#include <csignal>
+#include <atomic>
 
 using namespace tredzone;
 using namespace eunex;
 
+static std::atomic<bool> g_running{true};
+
+void signalHandler(int) { g_running = false; }
+
 int main() {
     std::cout << "═══════════════════════════════════════════\n";
-    std::cout << "  EuNEx Matching Engine v0.2\n";
-    std::cout << "  Multi-threaded actor engine\n";
+    std::cout << "  EuNEx Matching Engine v0.4\n";
+    std::cout << "  C++ Actor Architecture (Optiq model)\n";
     std::cout << "═══════════════════════════════════════════\n\n";
 
-    // ── Build actor topology ───────────────────────────────────────
+    std::signal(SIGINT, signalHandler);
+    std::signal(SIGTERM, signalHandler);
+
+    // ── Symbol definitions ────────────────────────────────────────
+    constexpr SymbolIndex_t SYM_AAPL  = 1;
+    constexpr SymbolIndex_t SYM_MSFT  = 2;
+    constexpr SymbolIndex_t SYM_GOOGL = 3;
+    constexpr SymbolIndex_t SYM_EURO50 = 4;
+
+    std::vector<SymbolIndex_t> allSymbols = {SYM_AAPL, SYM_MSFT, SYM_GOOGL, SYM_EURO50};
+
+    // ── Core 0: OE Gateway ────────────────────────────────────────
     auto oeGateway = std::make_unique<OEGatewayActor>();
-    auto mdActor   = std::make_unique<MarketDataActor>();
 
-    constexpr SymbolIndex_t SYM_AAPL = 1;
-    constexpr SymbolIndex_t SYM_MSFT = 2;
+    // ── Core 2: Market Data ───────────────────────────────────────
+    auto mdActor = std::make_unique<MarketDataActor>();
 
+    // ── Core 3: Clearing House ────────────────────────────────────
+    auto chActor = std::make_unique<ClearingHouseActor>();
+
+    // Map AI trader sessions to clearing house members
+    for (int i = 0; i < 10; ++i) {
+        chActor->mapSession(static_cast<SessionId_t>(200 + i),
+                            static_cast<MemberId_t>(i + 1));
+    }
+    // Map FIX gateway sessions (100-109) to members too
+    for (int i = 0; i < 10; ++i) {
+        chActor->mapSession(static_cast<SessionId_t>(100 + i),
+                            static_cast<MemberId_t>(i + 1));
+    }
+
+    // ── Core 1: Order Books (per symbol) ──────────────────────────
     auto bookAAPL = std::make_unique<OrderBookActor>(
-        SYM_AAPL, oeGateway->getActorId(), mdActor->getActorId());
+        SYM_AAPL, oeGateway->getActorId(), mdActor->getActorId(), chActor->getActorId());
     auto bookMSFT = std::make_unique<OrderBookActor>(
-        SYM_MSFT, oeGateway->getActorId(), mdActor->getActorId());
+        SYM_MSFT, oeGateway->getActorId(), mdActor->getActorId(), chActor->getActorId());
+    auto bookGOOGL = std::make_unique<OrderBookActor>(
+        SYM_GOOGL, oeGateway->getActorId(), mdActor->getActorId(), chActor->getActorId());
+    auto bookEURO50 = std::make_unique<OrderBookActor>(
+        SYM_EURO50, oeGateway->getActorId(), mdActor->getActorId(), chActor->getActorId());
 
     oeGateway->mapSymbol(SYM_AAPL, bookAAPL->getActorId());
     oeGateway->mapSymbol(SYM_MSFT, bookMSFT->getActorId());
+    oeGateway->mapSymbol(SYM_GOOGL, bookGOOGL->getActorId());
+    oeGateway->mapSymbol(SYM_EURO50, bookEURO50->getActorId());
 
-    std::cout << "Actors created:\n";
-    std::cout << "  OEGateway  (id=" << oeGateway->getActorId().id << ")\n";
-    std::cout << "  MarketData (id=" << mdActor->getActorId().id << ")\n";
-    std::cout << "  Book AAPL  (id=" << bookAAPL->getActorId().id << ")\n";
-    std::cout << "  Book MSFT  (id=" << bookMSFT->getActorId().id << ")\n\n";
+    // ── Core 0: FIX Gateway ──────────────────────────────────────
+    auto fixGateway = std::make_unique<FIXGatewayActor>(oeGateway->getActorId(), 9001);
 
-    // ── Submit orders ──────────────────────────────────────────────
-    SessionId_t session = 1;
-    std::cout << "── Submitting orders ──────────────────────\n\n";
+    // ── Core 3: AI Trader ─────────────────────────────────────────
+    auto aiTrader = std::make_unique<AITraderActor>(oeGateway->getActorId(), allSymbols);
 
-    oeGateway->submitNewOrder(1001, SYM_AAPL, Side::Sell, OrderType::Limit,
-                               TimeInForce::Day, toFixedPrice(150.00), 100, session);
-    std::cout << "SELL AAPL 100 @ 150.00\n";
+    // ── Wire exec report subscribers ──────────────────────────────
+    oeGateway->addExecReportSubscriber(fixGateway->getActorId());
+    oeGateway->addExecReportSubscriber(aiTrader->getActorId());
 
-    oeGateway->submitNewOrder(1002, SYM_AAPL, Side::Sell, OrderType::Limit,
-                               TimeInForce::Day, toFixedPrice(151.00), 50, session);
-    std::cout << "SELL AAPL  50 @ 151.00\n";
+    // ── Print topology ────────────────────────────────────────────
+    std::cout << "Actor topology:\n";
+    std::cout << "  Core 0: OEGateway (id=" << oeGateway->getActorId().id
+              << "), FIXGateway (id=" << fixGateway->getActorId().id << ")\n";
+    std::cout << "  Core 1: Book AAPL (id=" << bookAAPL->getActorId().id
+              << "), MSFT (id=" << bookMSFT->getActorId().id
+              << "), GOOGL (id=" << bookGOOGL->getActorId().id
+              << "), EURO50 (id=" << bookEURO50->getActorId().id << ")\n";
+    std::cout << "  Core 2: MarketData (id=" << mdActor->getActorId().id << ")\n";
+    std::cout << "  Core 3: ClearingHouse (id=" << chActor->getActorId().id
+              << "), AITrader (id=" << aiTrader->getActorId().id << ")\n\n";
 
-    oeGateway->submitNewOrder(1003, SYM_AAPL, Side::Buy, OrderType::Limit,
-                               TimeInForce::Day, toFixedPrice(150.00), 75, session);
-    std::cout << "BUY  AAPL  75 @ 150.00 (should match 75 of sell@150)\n";
+    std::cout << "Services:\n";
+    std::cout << "  FIX Gateway:  TCP port 9001\n";
+    std::cout << "  AI Traders:   10 members (MBR01-MBR10)\n";
+    std::cout << "  Symbols:      AAPL, MSFT, GOOGL, EURO50\n\n";
 
-    oeGateway->submitNewOrder(1004, SYM_AAPL, Side::Buy, OrderType::Market,
-                               TimeInForce::IOC, NULL_PRICE, 30, session);
-    std::cout << "BUY  AAPL  30 MARKET IOC (should match 25@150 + 5@151)\n";
+    // ── Seed initial orders for AI to have market data ────────────
+    std::cout << "Seeding initial order book...\n";
+    SessionId_t seedSession = 200;
 
-    oeGateway->submitNewOrder(1005, SYM_AAPL, Side::Buy, OrderType::Limit,
-                               TimeInForce::FOK, toFixedPrice(151.00), 100, session);
-    std::cout << "BUY  AAPL 100 @ 151.00 FOK (should be rejected)\n";
-
-    oeGateway->submitNewOrder(2001, SYM_MSFT, Side::Buy, OrderType::Limit,
-                               TimeInForce::Day, toFixedPrice(320.50), 200, session);
-    std::cout << "BUY  MSFT 200 @ 320.50\n";
-
-    oeGateway->submitNewOrder(2002, SYM_MSFT, Side::Sell, OrderType::Limit,
-                               TimeInForce::Day, toFixedPrice(320.50), 150, session);
-    std::cout << "SELL MSFT 150 @ 320.50 (should match 150)\n";
-
-    // ── Print results ──────────────────────────────────────────────
-    std::cout << "\n── Execution Reports ─────────────────────\n\n";
-
-    auto statusStr = [](OrderStatus s) -> const char* {
-        switch (s) {
-            case OrderStatus::New: return "NEW";
-            case OrderStatus::PartiallyFilled: return "PARTIAL";
-            case OrderStatus::Filled: return "FILLED";
-            case OrderStatus::Cancelled: return "CANCELLED";
-            case OrderStatus::Rejected: return "REJECTED";
-            default: return "UNKNOWN";
-        }
+    struct SeedOrder { SymbolIndex_t sym; Side side; double price; Quantity_t qty; };
+    SeedOrder seeds[] = {
+        {SYM_AAPL,  Side::Sell, 155.00, 100}, {SYM_AAPL,  Side::Sell, 154.00, 200},
+        {SYM_AAPL,  Side::Buy,  153.00, 150}, {SYM_AAPL,  Side::Buy,  152.00, 100},
+        {SYM_MSFT,  Side::Sell, 325.00, 100}, {SYM_MSFT,  Side::Sell, 324.00, 150},
+        {SYM_MSFT,  Side::Buy,  323.00, 200}, {SYM_MSFT,  Side::Buy,  322.00, 100},
+        {SYM_GOOGL, Side::Sell, 142.00, 100}, {SYM_GOOGL, Side::Sell, 141.00, 200},
+        {SYM_GOOGL, Side::Buy,  140.00, 150}, {SYM_GOOGL, Side::Buy,  139.00, 100},
+        {SYM_EURO50, Side::Sell, 5050.00, 50}, {SYM_EURO50, Side::Sell, 5040.00, 80},
+        {SYM_EURO50, Side::Buy,  5030.00, 60}, {SYM_EURO50, Side::Buy,  5020.00, 40},
     };
 
-    for (auto& rpt : oeGateway->getReports()) {
-        std::cout << "  ClOrdId=" << rpt.clOrdId
-                  << " OrderId=" << rpt.orderId
-                  << " Status=" << statusStr(rpt.status)
-                  << " Filled=" << rpt.filledQty
-                  << " Remaining=" << rpt.remainingQty;
-        if (rpt.lastQty > 0) {
-            std::cout << " LastPx=" << toDouble(rpt.lastPrice)
-                      << " LastQty=" << rpt.lastQty;
+    ClOrdId_t seedClOrd = 1;
+    for (auto& s : seeds) {
+        oeGateway->submitNewOrder(seedClOrd++, s.sym, s.side, OrderType::Limit,
+                                   TimeInForce::Day, toFixedPrice(s.price), s.qty, seedSession);
+    }
+    oeGateway->clearReports();
+
+    std::cout << "Initial orders seeded.\n\n";
+
+    // ── Run AI trading rounds ─────────────────────────────────────
+    std::cout << "Running AI trading... (Ctrl+C to stop)\n";
+    std::cout << "FIX clients can connect to localhost:9001\n\n";
+
+    int round = 0;
+    while (g_running) {
+        aiTrader->onCallback();
+        round++;
+
+        if (round % 10 == 0) {
+            std::cout << "── Round " << round << " ──\n";
+
+            auto leaderboard = chActor->getLeaderboard();
+            std::cout << "  Leaderboard:\n";
+            for (int i = 0; i < std::min(5, static_cast<int>(leaderboard.size())); ++i) {
+                auto& e = leaderboard[i];
+                std::cout << "    " << e.name
+                          << "  Capital=" << static_cast<int>(e.capital)
+                          << "  P&L=" << static_cast<int>(e.pnl)
+                          << "  Trades=" << e.tradeCount << "\n";
+            }
+
+            auto printBBO = [&](SymbolIndex_t sym, const char* name) {
+                auto* snap = mdActor->getSnapshot(sym);
+                if (snap) {
+                    std::cout << "  " << name << ":"
+                              << " Bid=" << toDouble(snap->bestBid)
+                              << " Ask=" << toDouble(snap->bestAsk)
+                              << " Last=" << toDouble(snap->lastTradePrice)
+                              << " Trades=" << snap->tradeCount << "\n";
+                }
+            };
+
+            printBBO(SYM_AAPL, "AAPL");
+            printBBO(SYM_MSFT, "MSFT");
+            printBBO(SYM_GOOGL, "GOOGL");
+            printBBO(SYM_EURO50, "EURO50");
+
+            if (fixGateway->isRunning()) {
+                std::cout << "  FIX clients: " << fixGateway->clientCount() << "\n";
+            }
+            std::cout << "\n";
         }
-        std::cout << "\n";
+
+        std::this_thread::sleep_for(std::chrono::seconds(3));
     }
 
-    // ── Print market data ──────────────────────────────────────────
-    std::cout << "\n── Market Data ───────────────────────────\n\n";
+    // ── Shutdown ──────────────────────────────────────────────────
+    std::cout << "\nShutting down...\n";
+    fixGateway->stop();
 
-    auto printSnapshot = [&](SymbolIndex_t sym, const char* name) {
+    std::cout << "\n── Final Market Data ─────────────────────\n";
+    for (auto sym : allSymbols) {
         auto* snap = mdActor->getSnapshot(sym);
         if (snap) {
-            std::cout << "  " << name << ":"
-                      << " LastPx=" << toDouble(snap->lastTradePrice)
-                      << " BestBid=" << toDouble(snap->bestBid)
-                      << " BestAsk=" << toDouble(snap->bestAsk)
-                      << " Trades=" << snap->tradeCount << "\n";
+            const char* names[] = {"", "AAPL", "MSFT", "GOOGL", "EURO50"};
+            std::cout << "  " << names[sym] << ": "
+                      << snap->tradeCount << " trades, last=" << toDouble(snap->lastTradePrice) << "\n";
         }
-    };
-
-    printSnapshot(SYM_AAPL, "AAPL");
-    printSnapshot(SYM_MSFT, "MSFT");
-
-    std::cout << "\n  Recent trades: " << mdActor->getRecentTrades().size() << "\n";
-    for (auto& t : mdActor->getRecentTrades()) {
-        const char* sym = (t.symbolIdx == SYM_AAPL) ? "AAPL" : "MSFT";
-        std::cout << "    " << sym << " " << t.quantity << " @ " << toDouble(t.price)
-                  << " (buy=" << t.buyOrderId << " sell=" << t.sellOrderId << ")\n";
     }
 
-    std::cout << "\n═══════════════════════════════════════════\n";
+    std::cout << "\n── Final Leaderboard ─────────────────────\n";
+    auto lb = chActor->getLeaderboard();
+    for (auto& e : lb) {
+        std::cout << "  " << e.name
+                  << "  Capital=" << static_cast<int>(e.capital)
+                  << "  P&L=" << static_cast<int>(e.pnl)
+                  << "  Trades=" << e.tradeCount
+                  << "  Holdings=" << e.holdingCount << "\n";
+    }
+
+    std::cout << "\nTrades processed: " << mdActor->getRecentTrades().size() << "\n";
+    std::cout << "═══════════════════════════════════════════\n";
     std::cout << "  Engine stopped.\n";
     return 0;
 }

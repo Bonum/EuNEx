@@ -19,6 +19,7 @@
 #include "engine/SimplxShim.hpp"
 #include "common/OrderBook.hpp"
 #include "actors/Events.hpp"
+#include <optional>
 
 namespace eunex {
 
@@ -28,7 +29,8 @@ public:
 
     OrderBookActor(SymbolIndex_t symbolIdx,
                    const tredzone::ActorId& oeGatewayId,
-                   const tredzone::ActorId& marketDataId);
+                   const tredzone::ActorId& marketDataId,
+                   const tredzone::ActorId& clearingHouseId = tredzone::ActorId{});
 
     void onEvent(const NewOrderEvent& event);
     void onEvent(const CancelOrderEvent& event);
@@ -38,6 +40,7 @@ private:
     OrderBook book_;
     tredzone::Actor::Event::Pipe oePipe_;
     tredzone::Actor::Event::Pipe mdPipe_;
+    std::optional<tredzone::Actor::Event::Pipe> chPipe_;
 
     void publishBookUpdate();
 };

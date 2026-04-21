@@ -5,11 +5,15 @@ namespace eunex {
 
 OrderBookActor::OrderBookActor(SymbolIndex_t symbolIdx,
                                const tredzone::ActorId& oeGatewayId,
-                               const tredzone::ActorId& marketDataId)
+                               const tredzone::ActorId& marketDataId,
+                               const tredzone::ActorId& clearingHouseId)
     : book_(symbolIdx)
     , oePipe_(*this, oeGatewayId)
     , mdPipe_(*this, marketDataId)
 {
+    if (clearingHouseId.id != 0) {
+        chPipe_.emplace(*this, clearingHouseId);
+    }
     registerEventHandler<NewOrderEvent>(*this);
     registerEventHandler<CancelOrderEvent>(*this);
     registerEventHandler<ModifyOrderEvent>(*this);
@@ -37,9 +41,9 @@ void OrderBookActor::onEvent(const NewOrderEvent& event) {
     //   Effect → publish limit update to MDLimit
 
     book_.newOrder(order,
-        // Trade callback — emit trade to MarketData actor
         [this](const Trade& trade) {
             mdPipe_.push<TradeEvent>(trade);
+            if (chPipe_) chPipe_->push<TradeEvent>(trade);
         },
         // Execution report — send back to OE Gateway
         [this, &event](const ExecutionReport& rpt) {

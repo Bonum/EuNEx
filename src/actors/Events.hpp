@@ -86,6 +86,11 @@ struct ExecReportEvent : tredzone::Actor::Event {
           filledQty(rpt.filledQty), remainingQty(rpt.remainingQty),
           lastPrice(rpt.lastPrice), lastQty(rpt.lastQty),
           tradeId(rpt.tradeId), sessionId(sess) {}
+    ExecReportEvent(const ExecReportEvent& other)
+        : orderId(other.orderId), clOrdId(other.clOrdId), status(other.status),
+          filledQty(other.filledQty), remainingQty(other.remainingQty),
+          lastPrice(other.lastPrice), lastQty(other.lastQty),
+          tradeId(other.tradeId), sessionId(other.sessionId) {}
 };
 
 // ── Trade event (OrderBook Actor → MarketData Actor) ───────────────
