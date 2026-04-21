@@ -1,14 +1,15 @@
 """
 EuNEx Dashboard — Web GUI for the matching engine.
 
-Equivalent to StockEx dashboard.py but backed by the C++ matching engine.
 Provides:
   - Real-time order book view (bids/asks per symbol)
-  - Recent trades table
+  - Recent trades table with SQLite persistence
   - Market data snapshots (BBO, last price, volume)
   - Order submission (new, cancel, amend)
+  - OHLCV chart data (1h, 8h, 1d, 1w)
   - Session controls (start/suspend/resume)
   - SSE streaming for live updates
+  - Clearing House integration
 
 Run: python dashboard/app.py
 """
@@ -17,10 +18,19 @@ import json
 import time
 import queue
 import threading
-import subprocess
 import sys
 import os
+import urllib.request
+import urllib.error
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
 from flask import Flask, render_template, request, jsonify, Response
+from dashboard.database import (
+    init_db, save_order, save_trade, record_ohlcv,
+    get_ohlcv, get_recent_orders, get_recent_trades, get_active_orders,
+)
+from shared.config import SYMBOLS, DASHBOARD_PORT, DASHBOARD_DB, CH_URL
 
 app = Flask(__name__)
 
@@ -28,39 +38,33 @@ app = Flask(__name__)
 
 state_lock = threading.Lock()
 
-symbols = {
-    1: {"name": "AAPL", "segment": "EQU"},
-    2: {"name": "MSFT", "segment": "EQU"},
-    3: {"name": "EURO50", "segment": "EQD"},
-}
-
+symbols = SYMBOLS
 orders = []
 trades = []
 snapshots = {}
 session_status = "idle"
 next_order_id = 1000
+db_path = DASHBOARD_DB
 
-# SSE clients
 sse_clients = []
 
 # ── Matching engine bridge ──────────────────────────────────────────
 
 class MatchingEngine:
-    """Bridge to the C++ matching engine via in-process simulation."""
-
     def __init__(self):
-        self.order_id_counter = 1
         self.books = {}
         for sym_id in symbols:
             self.books[sym_id] = {"bids": [], "asks": []}
 
-    def submit_order(self, symbol_id, side, order_type, price, quantity, tif="Day"):
+    def submit_order(self, symbol_id, side, order_type, price, quantity,
+                     tif="Day", source="dashboard", cl_ord_id=""):
         global next_order_id
         oid = next_order_id
         next_order_id += 1
 
         order = {
             "orderId": oid,
+            "clOrdId": cl_ord_id or f"D-{oid}",
             "symbolIdx": symbol_id,
             "symbol": symbols.get(symbol_id, {}).get("name", "???"),
             "side": side,
@@ -70,6 +74,7 @@ class MatchingEngine:
             "remainingQty": quantity,
             "status": "New",
             "tif": tif,
+            "source": source,
             "timestamp": time.time(),
         }
 
@@ -88,8 +93,11 @@ class MatchingEngine:
 
             self._update_snapshot(symbol_id)
 
+        save_order(db_path, order)
         broadcast_event("order", order)
         for t in matched_trades:
+            save_trade(db_path, t)
+            record_ohlcv(db_path, t["symbol"], t["price"], t["quantity"])
             broadcast_event("trade", t)
         broadcast_event("snapshot", snapshots.get(symbol_id, {}))
 
@@ -102,6 +110,24 @@ class MatchingEngine:
                     o["status"] = "Cancelled"
                     self._remove_from_book(o)
                     self._update_snapshot(o["symbolIdx"])
+                    save_order(db_path, o)
+                    broadcast_event("order", o)
+                    return o
+        return None
+
+    def amend_order(self, order_id, new_price=None, new_quantity=None):
+        with state_lock:
+            for o in orders:
+                if o["orderId"] == order_id and o["status"] in ("New", "PartiallyFilled"):
+                    self._remove_from_book(o)
+                    if new_price is not None:
+                        o["price"] = new_price
+                    if new_quantity is not None:
+                        o["quantity"] = new_quantity
+                        o["remainingQty"] = new_quantity
+                    self._insert_resting(o)
+                    self._update_snapshot(o["symbolIdx"])
+                    save_order(db_path, o)
                     broadcast_event("order", o)
                     return o
         return None
@@ -116,7 +142,6 @@ class MatchingEngine:
         else:
             opposite = book["bids"]
 
-        # FOK check
         if incoming["tif"] == "FOK":
             available = 0
             for level in opposite:
@@ -162,6 +187,7 @@ class MatchingEngine:
                     if o["orderId"] == resting["orderId"]:
                         o["status"] = "Filled"
                         o["remainingQty"] = 0
+                        save_order(db_path, o)
                         broadcast_event("order", o)
                         break
             else:
@@ -170,6 +196,7 @@ class MatchingEngine:
                     if o["orderId"] == resting["orderId"]:
                         o["status"] = "PartiallyFilled"
                         o["remainingQty"] = resting["remainingQty"]
+                        save_order(db_path, o)
                         broadcast_event("order", o)
                         break
                 i += 1
@@ -194,7 +221,6 @@ class MatchingEngine:
         book = self.books[sym]
         entry = {"orderId": order["orderId"], "price": order["price"],
                  "remainingQty": order["remainingQty"], "side": order["side"]}
-
         if order["side"] == "Buy":
             book["bids"].append(entry)
             book["bids"].sort(key=lambda x: -x["price"])
@@ -268,7 +294,7 @@ def data():
             "orders": orders[-50:],
             "trades": trades[-100:],
             "snapshots": {k: v for k, v in snapshots.items()},
-            "symbols": symbols,
+            "symbols": {k: v for k, v in symbols.items()},
             "session": session_status,
         })
 
@@ -303,6 +329,8 @@ def new_order():
         price=float(d.get("price", 0)),
         quantity=int(d["quantity"]),
         tif=d.get("tif", "Day"),
+        source=d.get("source", "dashboard"),
+        cl_ord_id=d.get("clOrdId", ""),
     )
     return jsonify(order)
 
@@ -314,17 +342,61 @@ def cancel_order():
         return jsonify(result)
     return jsonify({"error": "Order not found or not cancellable"}), 404
 
+@app.route("/order/amend", methods=["POST"])
+def amend_order():
+    d = request.json
+    result = engine.amend_order(
+        order_id=int(d["orderId"]),
+        new_price=float(d["price"]) if "price" in d else None,
+        new_quantity=int(d["quantity"]) if "quantity" in d else None,
+    )
+    if result:
+        return jsonify(result)
+    return jsonify({"error": "Order not found or not amendable"}), 404
+
 @app.route("/orderbook/<int:symbol_id>")
 def orderbook(symbol_id):
     with state_lock:
         snap = snapshots.get(symbol_id, {})
         return jsonify(snap)
 
+@app.route("/chart/<symbol>")
+def chart_data(symbol):
+    period = request.args.get("period", "1h")
+    period_map = {"1h": 3600, "8h": 28800, "1d": 86400, "1w": 604800}
+    seconds = period_map.get(period, 3600)
+    bars = get_ohlcv(db_path, symbol, seconds)
+    return jsonify(bars)
+
+@app.route("/history/orders")
+def history_orders():
+    limit = int(request.args.get("limit", 100))
+    rows = get_recent_orders(db_path, limit)
+    return jsonify(rows)
+
+@app.route("/history/trades")
+def history_trades():
+    limit = int(request.args.get("limit", 200))
+    rows = get_recent_trades(db_path, limit)
+    return jsonify(rows)
+
+@app.route("/ch/leaderboard")
+def ch_leaderboard():
+    try:
+        req = urllib.request.Request(f"{CH_URL}/api/leaderboard")
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            return jsonify(json.loads(resp.read()))
+    except Exception:
+        return jsonify([])
+
+# ── Session controls ────────────────────────────────────────────────
+
 @app.route("/session/start", methods=["POST"])
 def session_start():
     global session_status
     session_status = "active"
     broadcast_event("session", {"status": session_status})
+    _notify_ch("start")
     return jsonify({"status": session_status})
 
 @app.route("/session/suspend", methods=["POST"])
@@ -332,6 +404,7 @@ def session_suspend():
     global session_status
     session_status = "suspended"
     broadcast_event("session", {"status": session_status})
+    _notify_ch("suspend")
     return jsonify({"status": session_status})
 
 @app.route("/session/resume", methods=["POST"])
@@ -339,6 +412,7 @@ def session_resume():
     global session_status
     session_status = "active"
     broadcast_event("session", {"status": session_status})
+    _notify_ch("resume")
     return jsonify({"status": session_status})
 
 @app.route("/session/end", methods=["POST"])
@@ -346,6 +420,7 @@ def session_end():
     global session_status
     session_status = "idle"
     broadcast_event("session", {"status": session_status})
+    _notify_ch("stop")
     return jsonify({"status": session_status})
 
 @app.route("/session/status")
@@ -353,7 +428,24 @@ def session_status_route():
     return jsonify({"status": session_status})
 
 
+def _notify_ch(action):
+    try:
+        data = json.dumps({"action": action}).encode()
+        req = urllib.request.Request(
+            f"{CH_URL}/api/control",
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=2)
+    except Exception:
+        pass
+
+
 if __name__ == "__main__":
-    port = int(os.environ.get("EUNEX_DASHBOARD_PORT", 8080))
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    init_db(db_path)
+    port = DASHBOARD_PORT
     print(f"EuNEx Dashboard starting on http://localhost:{port}")
+    print(f"  Database: {db_path}")
     app.run(host="0.0.0.0", port=port, debug=True, threaded=True)

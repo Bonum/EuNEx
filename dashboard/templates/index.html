@@ -1,420 +1,452 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>EuNEx Dashboard</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EuNEx Trading Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0e17; color: #c8d6e5; font-size: 13px; }
+:root{--bg:#0a0e27;--card:#131835;--border:#2a2f5a;--text:#e0e0e0;--muted:#5a6088;
+--accent:#00d4aa;--red:#ff6b6b;--blue:#4a90d9;--purple:#7c5cfc;--yellow:#f0c040;
+--bid:#00d4aa;--ask:#ff6b6b}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:13px}
 
-.header { background: #141b2d; padding: 8px 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #1e2a3a; }
-.header h1 { font-size: 16px; color: #4fc3f7; font-weight: 600; }
-.header .status { display: flex; align-items: center; gap: 8px; }
-.status-dot { width: 8px; height: 8px; border-radius: 50%; background: #666; }
-.status-dot.active { background: #4caf50; animation: pulse 2s infinite; }
-.status-dot.suspended { background: #ff9800; }
-@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+.header{display:flex;justify-content:space-between;align-items:center;padding:12px 20px;
+background:var(--card);border-bottom:1px solid var(--border)}
+.header h1{font-size:18px;color:var(--accent);font-weight:700}
+.header .controls{display:flex;gap:8px;align-items:center}
+.header .status{padding:4px 12px;border-radius:12px;font-size:11px;font-weight:600}
+.status-active{background:#00d4aa33;color:var(--accent)}
+.status-suspended{background:#f0c04033;color:var(--yellow)}
+.status-idle{background:#5a608833;color:var(--muted)}
+button{padding:6px 14px;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;transition:opacity .2s}
+button:hover{opacity:.85}
+.btn-green{background:var(--accent);color:var(--bg)}
+.btn-yellow{background:var(--yellow);color:var(--bg)}
+.btn-red{background:var(--red);color:#fff}
+.btn-blue{background:var(--blue);color:#fff}
+.btn-small{padding:3px 8px;font-size:11px}
 
-.controls { display: flex; gap: 6px; }
-.btn { padding: 4px 12px; border: 1px solid #2a3a4a; border-radius: 3px; background: #1a2332; color: #c8d6e5; cursor: pointer; font-size: 12px; }
-.btn:hover { background: #243447; }
-.btn.buy { border-color: #2e7d32; color: #66bb6a; }
-.btn.sell { border-color: #c62828; color: #ef5350; }
-.btn.active-btn { background: #1b5e20; border-color: #4caf50; }
+.grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;padding:12px 20px}
+.panel{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px;overflow:hidden}
+.panel h3{color:var(--accent);font-size:13px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
 
-.grid { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto 1fr 1fr; gap: 8px; padding: 8px; height: calc(100vh - 44px); }
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:6px 8px;color:var(--muted);font-weight:600;border-bottom:1px solid var(--border)}
+td{padding:5px 8px;border-bottom:1px solid #1a1f4522}
+tr:hover{background:#1a1f4566}
+.green{color:var(--accent)}.red{color:var(--red)}.blue{color:var(--blue)}
+.purple{color:var(--purple)}.yellow{color:var(--yellow)}.muted{color:var(--muted)}
 
-.panel { background: #141b2d; border: 1px solid #1e2a3a; border-radius: 4px; display: flex; flex-direction: column; overflow: hidden; }
-.panel-header { padding: 6px 10px; background: #1a2332; border-bottom: 1px solid #1e2a3a; font-size: 12px; font-weight: 600; color: #4fc3f7; display: flex; justify-content: space-between; align-items: center; }
-.panel-body { flex: 1; overflow-y: auto; padding: 4px; }
+.tag{padding:2px 6px;border-radius:8px;font-size:10px;font-weight:600}
+.tag-equ{background:#00d4aa22;color:var(--accent)}
+.tag-eqd{background:#7c5cfc22;color:var(--purple)}
 
-.order-form { grid-column: 1 / -1; }
-.order-form .panel-body { display: flex; gap: 8px; padding: 8px; flex-wrap: wrap; align-items: center; }
-.order-form select, .order-form input { padding: 4px 8px; background: #0a0e17; border: 1px solid #2a3a4a; color: #c8d6e5; border-radius: 3px; font-size: 12px; }
-.order-form input { width: 80px; }
-.order-form label { font-size: 11px; color: #8899aa; margin-right: 2px; }
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+label{font-size:11px;color:var(--muted);margin-bottom:2px;display:block}
+select,input[type=number]{width:100%;padding:7px;background:#1a1f45;border:1px solid var(--border);
+border-radius:6px;color:var(--text);font-size:12px}
+.order-buttons{display:flex;gap:8px;margin-top:10px}
+.order-buttons button{flex:1;padding:10px;font-size:14px}
 
-table { width: 100%; border-collapse: collapse; }
-th { text-align: left; padding: 3px 6px; color: #8899aa; font-size: 11px; font-weight: 500; border-bottom: 1px solid #1e2a3a; position: sticky; top: 0; background: #141b2d; }
-td { padding: 3px 6px; border-bottom: 1px solid #0e1525; font-size: 12px; }
-tr:hover { background: #1a2332; }
+.ob-row{display:flex;align-items:center;margin:1px 0;font-size:11px;position:relative}
+.ob-bar{position:absolute;top:0;bottom:0;opacity:.15;border-radius:3px}
+.ob-bar-bid{background:var(--bid);right:0}.ob-bar-ask{background:var(--ask);left:0}
+.ob-price{width:70px;text-align:right;padding:2px 6px;z-index:1}
+.ob-qty{width:60px;padding:2px 6px;z-index:1}
+.ob-side{display:flex;flex-direction:column;flex:1}
 
-.price-bid { color: #66bb6a; }
-.price-ask { color: #ef5350; }
-.price-neutral { color: #c8d6e5; }
+.chart-controls{display:flex;gap:4px;margin-bottom:8px}
+.chart-controls button{padding:3px 10px;font-size:11px;background:var(--border);color:var(--muted);border-radius:4px}
+.chart-controls button.active{background:var(--accent);color:var(--bg)}
+#priceChart{width:100%!important;height:200px!important}
 
-.book-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; height: 100%; }
-.book-side { overflow-y: auto; }
-.book-side h3 { font-size: 11px; color: #8899aa; padding: 4px 6px; text-align: center; }
+.modal-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:100;justify-content:center;align-items:center}
+.modal-overlay.show{display:flex}
+.modal{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;width:320px}
+.modal h3{margin-bottom:15px}
+.modal input{margin-bottom:10px}
+.modal-buttons{display:flex;gap:8px;margin-top:10px}
+.modal-buttons button{flex:1}
 
-.bar { height: 18px; display: flex; align-items: center; padding: 0 4px; font-size: 11px; margin: 1px 2px; border-radius: 2px; }
-.bar-bid { background: rgba(76, 175, 80, 0.15); justify-content: flex-end; text-align: right; }
-.bar-ask { background: rgba(239, 83, 80, 0.12); }
-.bar-fill { position: absolute; top: 0; bottom: 0; opacity: 0.2; border-radius: 2px; }
-
-.ticker { display: flex; gap: 16px; overflow-x: auto; padding: 6px 10px; white-space: nowrap; }
-.ticker-item { display: flex; gap: 6px; align-items: center; }
-.ticker-sym { font-weight: 600; color: #4fc3f7; }
-.ticker-up { color: #66bb6a; }
-.ticker-down { color: #ef5350; }
-
-.stat-row { display: flex; justify-content: space-between; padding: 3px 8px; }
-.stat-label { color: #8899aa; }
-.stat-value { font-weight: 500; }
-
-.flash { animation: flash-bg 0.5s; }
-@keyframes flash-bg { 0% { background: rgba(79, 195, 247, 0.2); } 100% { background: transparent; } }
-
-.tag { font-size: 10px; padding: 1px 4px; border-radius: 2px; }
-.tag-equ { background: #1b5e20; color: #a5d6a7; }
-.tag-eqd { background: #4a148c; color: #ce93d8; }
+.lb-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #1a1f4544}
+.lb-rank{color:var(--yellow);font-weight:700;width:20px}
+.lb-name{flex:1;margin-left:6px}
+.lb-val{font-weight:600}
 </style>
 </head>
 <body>
-
 <div class="header">
-    <h1>EuNEx Matching Engine</h1>
-    <div class="status">
-        <div class="status-dot" id="statusDot"></div>
-        <span id="statusText">Disconnected</span>
-    </div>
-    <div class="controls">
-        <button class="btn" onclick="sessionAction('start')">Start Day</button>
-        <button class="btn" onclick="sessionAction('suspend')">Suspend</button>
-        <button class="btn" onclick="sessionAction('resume')">Resume</button>
-        <button class="btn" onclick="sessionAction('end')">End Day</button>
-    </div>
+  <h1>EuNEx Trading Dashboard</h1>
+  <div class="controls">
+    <span id="sessionStatus" class="status status-idle">IDLE</span>
+    <span id="sseStatus" class="muted" style="font-size:11px">Connecting...</span>
+    <button class="btn-green" onclick="sessionAction('start')">Start Day</button>
+    <button class="btn-yellow" onclick="sessionAction('suspend')">Suspend</button>
+    <button class="btn-green" onclick="sessionAction('resume')">Resume</button>
+    <button class="btn-red" onclick="sessionAction('end')">End Day</button>
+  </div>
 </div>
 
+<!-- Row 1: Order Entry | Order Book | Market Snapshot -->
 <div class="grid">
-    <!-- Order Entry -->
-    <div class="panel order-form">
-        <div class="panel-header">Order Entry</div>
-        <div class="panel-body">
-            <label>Symbol</label>
-            <select id="fSymbol">
-                <option value="1">AAPL (EQU)</option>
-                <option value="2">MSFT (EQU)</option>
-                <option value="3">EURO50 (EQD)</option>
-            </select>
-            <label>Side</label>
-            <select id="fSide">
-                <option value="Buy">Buy</option>
-                <option value="Sell">Sell</option>
-            </select>
-            <label>Type</label>
-            <select id="fType">
-                <option value="Limit">Limit</option>
-                <option value="Market">Market</option>
-            </select>
-            <label>TIF</label>
-            <select id="fTif">
-                <option value="Day">Day</option>
-                <option value="IOC">IOC</option>
-                <option value="FOK">FOK</option>
-            </select>
-            <label>Price</label>
-            <input type="number" id="fPrice" step="0.01" value="150.00">
-            <label>Qty</label>
-            <input type="number" id="fQty" step="1" value="100">
-            <button class="btn buy" onclick="submitOrder('Buy')">BUY</button>
-            <button class="btn sell" onclick="submitOrder('Sell')">SELL</button>
-        </div>
+  <div class="panel">
+    <h3>Order Entry</h3>
+    <div class="form-grid">
+      <div><label>Symbol</label>
+        <select id="orderSymbol" onchange="updateOrderPrice()"></select></div>
+      <div><label>Type</label>
+        <select id="orderType"><option>Limit</option><option>Market</option></select></div>
+      <div><label>TIF</label>
+        <select id="orderTif"><option>Day</option><option>GTC</option><option>IOC</option><option>FOK</option></select></div>
+      <div><label>Price</label>
+        <input id="orderPrice" type="number" step="0.01" value="185.00"></div>
+      <div style="grid-column:1/-1"><label>Quantity</label>
+        <input id="orderQty" type="number" value="100" min="1"></div>
     </div>
+    <div class="order-buttons">
+      <button class="btn-green" onclick="submitOrder('Buy')">BUY</button>
+      <button class="btn-red" onclick="submitOrder('Sell')">SELL</button>
+    </div>
+  </div>
 
-    <!-- Order Book -->
-    <div class="panel">
-        <div class="panel-header">
-            Order Book
-            <select id="bookSymbol" onchange="refreshBook()" style="background:#0a0e17;border:1px solid #2a3a4a;color:#c8d6e5;font-size:11px;padding:2px;">
-                <option value="1">AAPL</option>
-                <option value="2">MSFT</option>
-                <option value="3">EURO50</option>
-            </select>
-        </div>
-        <div class="panel-body">
-            <div class="book-grid">
-                <div class="book-side" id="bookBids">
-                    <h3>BIDS</h3>
-                </div>
-                <div class="book-side" id="bookAsks">
-                    <h3>ASKS</h3>
-                </div>
-            </div>
-        </div>
+  <div class="panel">
+    <h3>Order Book <select id="obSymbol" onchange="renderOrderBook()" style="background:var(--border);border:none;color:var(--muted);padding:2px 6px;border-radius:4px;font-size:11px"></select></h3>
+    <div style="display:flex;gap:12px">
+      <div class="ob-side" style="flex:1">
+        <div style="color:var(--muted);font-size:10px;margin-bottom:4px">BIDS</div>
+        <div id="obBids"></div>
+      </div>
+      <div class="ob-side" style="flex:1">
+        <div style="color:var(--muted);font-size:10px;margin-bottom:4px">ASKS</div>
+        <div id="obAsks"></div>
+      </div>
     </div>
+  </div>
 
-    <!-- Market Snapshot -->
-    <div class="panel">
-        <div class="panel-header">Market Snapshot (BBO)</div>
-        <div class="panel-body">
-            <div class="ticker" id="ticker"></div>
-            <table>
-                <thead><tr><th>Symbol</th><th>Seg</th><th>Bid</th><th>Ask</th><th>Last</th><th>Vol</th><th>Trades</th></tr></thead>
-                <tbody id="snapshotTable"></tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- Orders -->
-    <div class="panel">
-        <div class="panel-header">
-            Active Orders
-            <span id="orderCount" style="color:#8899aa;font-weight:400;">0</span>
-        </div>
-        <div class="panel-body">
-            <table>
-                <thead><tr><th>ID</th><th>Sym</th><th>Side</th><th>Type</th><th>Price</th><th>Qty</th><th>Rem</th><th>Status</th><th></th></tr></thead>
-                <tbody id="ordersTable"></tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- Trades -->
-    <div class="panel">
-        <div class="panel-header">
-            Recent Trades
-            <span id="tradeCount" style="color:#8899aa;font-weight:400;">0</span>
-        </div>
-        <div class="panel-body">
-            <table>
-                <thead><tr><th>ID</th><th>Symbol</th><th>Price</th><th>Qty</th><th>Buy OID</th><th>Sell OID</th><th>Time</th></tr></thead>
-                <tbody id="tradesTable"></tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- Statistics -->
-    <div class="panel">
-        <div class="panel-header">Trading Statistics</div>
-        <div class="panel-body" id="statsPanel">
-        </div>
-    </div>
+  <div class="panel">
+    <h3>Market Snapshot</h3>
+    <table><thead><tr><th>Sym</th><th>Seg</th><th>Bid</th><th>Ask</th><th>Last</th><th>Vol</th></tr></thead>
+    <tbody id="snapshotTable"></tbody></table>
+  </div>
 </div>
+
+<!-- Row 2: Price Chart -->
+<div class="grid" style="grid-template-columns:1fr">
+  <div class="panel">
+    <h3>Price Chart
+      <div class="chart-controls">
+        <select id="chartSymbol" onchange="loadChart()" style="background:var(--border);border:none;color:var(--muted);padding:2px 6px;border-radius:4px;font-size:11px"></select>
+        <button class="active" onclick="setChartPeriod(this,'1h')">1H</button>
+        <button onclick="setChartPeriod(this,'8h')">8H</button>
+        <button onclick="setChartPeriod(this,'1d')">1D</button>
+        <button onclick="setChartPeriod(this,'1w')">1W</button>
+      </div>
+    </h3>
+    <canvas id="priceChart"></canvas>
+  </div>
+</div>
+
+<!-- Row 3: Active Orders | Recent Trades | CH Leaderboard -->
+<div class="grid">
+  <div class="panel">
+    <h3>Active Orders</h3>
+    <div style="max-height:250px;overflow-y:auto">
+    <table><thead><tr><th>ID</th><th>Sym</th><th>Side</th><th>Price</th><th>Qty</th><th>Rem</th><th>Src</th><th></th></tr></thead>
+    <tbody id="ordersTable"></tbody></table>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Recent Trades</h3>
+    <div style="max-height:250px;overflow-y:auto">
+    <table><thead><tr><th>ID</th><th>Sym</th><th>Price</th><th>Qty</th><th>Buy</th><th>Sell</th><th>Time</th></tr></thead>
+    <tbody id="tradesTable"></tbody></table>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Clearing House</h3>
+    <div id="leaderboard" style="max-height:250px;overflow-y:auto"></div>
+  </div>
+</div>
+
+<!-- Row 4: Trading Statistics -->
+<div class="grid" style="grid-template-columns:1fr">
+  <div class="panel">
+    <h3>Trading Statistics</h3>
+    <table><thead><tr><th>Symbol</th><th>Segment</th><th>Last</th><th>Spread</th><th>Volume</th><th>Trades</th><th>Bid Depth</th><th>Ask Depth</th></tr></thead>
+    <tbody id="statsTable"></tbody></table>
+  </div>
+</div>
+
+<!-- Amend Modal -->
+<div class="modal-overlay" id="amendModal">
+<div class="modal">
+  <h3>Amend Order #<span id="amendOrderId"></span></h3>
+  <label>New Price</label><input id="amendPrice" type="number" step="0.01">
+  <label>New Quantity</label><input id="amendQty" type="number" min="1">
+  <div class="modal-buttons">
+    <button class="btn-blue" onclick="doAmend()">Amend</button>
+    <button class="btn-red" onclick="closeAmend()">Cancel</button>
+  </div>
+</div></div>
 
 <script>
-const API = '';
-let evtSource = null;
+const state = {orders:[], trades:[], snapshots:{}, symbols:{}, session:'idle'};
+let chartPeriod = '1h';
+let priceChart = null;
 
-function fmt(v, dec=2) {
-    return v ? Number(v).toFixed(dec) : '-';
+async function init() {
+  const resp = await fetch('/data');
+  const d = await resp.json();
+  Object.assign(state, d);
+  populateSymbolSelectors();
+  renderAll();
+  loadChart();
+  loadLeaderboard();
+  connectSSE();
+  setInterval(loadChart, 15000);
+  setInterval(loadLeaderboard, 10000);
 }
 
-function ts(epoch) {
-    if (!epoch) return '-';
-    const d = new Date(epoch * 1000);
-    return d.toLocaleTimeString();
+function populateSymbolSelectors() {
+  const syms = state.symbols;
+  ['orderSymbol','obSymbol','chartSymbol'].forEach(id => {
+    const sel = document.getElementById(id);
+    sel.innerHTML = '';
+    for (const [sid, info] of Object.entries(syms)) {
+      const o = document.createElement('option');
+      o.value = sid; o.textContent = info.name + ' (' + info.segment + ')';
+      sel.appendChild(o);
+    }
+  });
 }
 
-// ── SSE Connection ─────────────────────────────────────────────────
+function connectSSE() {
+  const es = new EventSource('/stream');
+  es.onopen = () => { document.getElementById('sseStatus').textContent = 'Live'; };
+  es.onerror = () => { document.getElementById('sseStatus').textContent = 'Reconnecting...'; };
+  es.addEventListener('order', e => {
+    const o = JSON.parse(e.data);
+    const idx = state.orders.findIndex(x => x.orderId === o.orderId);
+    if (idx >= 0) state.orders[idx] = o; else state.orders.push(o);
+    renderOrders(); renderStats();
+  });
+  es.addEventListener('trade', e => {
+    const t = JSON.parse(e.data);
+    state.trades.push(t);
+    if (state.trades.length > 200) state.trades.shift();
+    renderTrades(); renderStats();
+  });
+  es.addEventListener('snapshot', e => {
+    const s = JSON.parse(e.data);
+    state.snapshots[s.symbolIdx] = s;
+    renderSnapshots(); renderOrderBook(); renderStats();
+  });
+  es.addEventListener('session', e => {
+    const s = JSON.parse(e.data);
+    state.session = s.status;
+    renderSession();
+  });
+}
 
-function connect() {
-    if (evtSource) evtSource.close();
-    evtSource = new EventSource(API + '/stream');
+function renderAll() { renderSession(); renderOrders(); renderTrades(); renderSnapshots(); renderOrderBook(); renderStats(); }
 
-    evtSource.onopen = () => {
-        document.getElementById('statusDot').className = 'status-dot active';
-        document.getElementById('statusText').textContent = 'Connected';
-    };
-    evtSource.onerror = () => {
-        document.getElementById('statusDot').className = 'status-dot';
-        document.getElementById('statusText').textContent = 'Disconnected';
-        setTimeout(connect, 3000);
-    };
+function renderSession() {
+  const el = document.getElementById('sessionStatus');
+  el.textContent = state.session.toUpperCase();
+  el.className = 'status status-' + state.session;
+}
 
-    evtSource.addEventListener('order', e => {
-        refreshData();
+function renderSnapshots() {
+  let html = '';
+  for (const [sid, s] of Object.entries(state.snapshots)) {
+    const seg = s.segment || '';
+    const tagCls = seg === 'EQD' ? 'tag-eqd' : 'tag-equ';
+    html += '<tr><td><strong>' + s.symbol + '</strong></td>' +
+      '<td><span class="tag ' + tagCls + '">' + seg + '</span></td>' +
+      '<td class="green">' + fmt(s.bestBid) + '</td>' +
+      '<td class="red">' + fmt(s.bestAsk) + '</td>' +
+      '<td>' + fmt(s.lastPrice) + '</td>' +
+      '<td>' + (s.volume||0) + '</td></tr>';
+  }
+  document.getElementById('snapshotTable').innerHTML = html;
+}
+
+function renderOrderBook() {
+  const sid = document.getElementById('obSymbol').value;
+  const snap = state.snapshots[sid] || {};
+  const bids = snap.bids || [], asks = snap.asks || [];
+  const maxQty = Math.max(...bids.map(b=>b.qty), ...asks.map(a=>a.qty), 1);
+  let bhtml = '';
+  for (const b of bids) {
+    const w = (b.qty / maxQty * 100).toFixed(0);
+    bhtml += '<div class="ob-row"><div class="ob-bar ob-bar-bid" style="width:'+w+'%"></div>' +
+      '<span class="ob-price green">'+fmt(b.price)+'</span><span class="ob-qty">'+b.qty+'</span></div>';
+  }
+  let ahtml = '';
+  for (const a of asks) {
+    const w = (a.qty / maxQty * 100).toFixed(0);
+    ahtml += '<div class="ob-row"><div class="ob-bar ob-bar-ask" style="width:'+w+'%"></div>' +
+      '<span class="ob-price red">'+fmt(a.price)+'</span><span class="ob-qty">'+a.qty+'</span></div>';
+  }
+  document.getElementById('obBids').innerHTML = bhtml || '<div class="muted">Empty</div>';
+  document.getElementById('obAsks').innerHTML = ahtml || '<div class="muted">Empty</div>';
+}
+
+function renderOrders() {
+  const active = state.orders.filter(o => o.status === 'New' || o.status === 'PartiallyFilled');
+  let html = '';
+  for (const o of active.slice(-30).reverse()) {
+    const cls = o.side === 'Buy' ? 'green' : 'red';
+    html += '<tr><td>'+o.orderId+'</td><td>'+o.symbol+'</td>' +
+      '<td class="'+cls+'">'+o.side+'</td>' +
+      '<td>'+fmt(o.price)+'</td><td>'+o.quantity+'</td><td>'+o.remainingQty+'</td>' +
+      '<td class="muted">'+(o.source||'').substring(0,8)+'</td>' +
+      '<td><button class="btn-small btn-blue" onclick="openAmend('+o.orderId+','+o.price+','+o.remainingQty+')">Amend</button> ' +
+      '<button class="btn-small btn-red" onclick="cancelOrder('+o.orderId+')">X</button></td></tr>';
+  }
+  document.getElementById('ordersTable').innerHTML = html || '<tr><td colspan="8" class="muted">No active orders</td></tr>';
+}
+
+function renderTrades() {
+  let html = '';
+  for (const t of state.trades.slice(-30).reverse()) {
+    html += '<tr><td>'+t.tradeId+'</td><td>'+t.symbol+'</td>' +
+      '<td class="green">'+fmt(t.price)+'</td><td>'+t.quantity+'</td>' +
+      '<td class="muted">'+t.buyOrderId+'</td><td class="muted">'+t.sellOrderId+'</td>' +
+      '<td class="muted">'+new Date(t.timestamp*1000).toLocaleTimeString()+'</td></tr>';
+  }
+  document.getElementById('tradesTable').innerHTML = html || '<tr><td colspan="7" class="muted">No trades</td></tr>';
+}
+
+function renderStats() {
+  let html = '';
+  for (const [sid, s] of Object.entries(state.snapshots)) {
+    const seg = s.segment || '';
+    const spread = s.bestAsk > 0 && s.bestBid > 0 ? (s.bestAsk - s.bestBid).toFixed(2) : '-';
+    html += '<tr><td><strong>'+s.symbol+'</strong></td>' +
+      '<td><span class="tag tag-'+seg.toLowerCase()+'">'+seg+'</span></td>' +
+      '<td>'+fmt(s.lastPrice)+'</td><td>'+spread+'</td>' +
+      '<td>'+(s.volume||0)+'</td><td>'+(s.tradeCount||0)+'</td>' +
+      '<td>'+(s.bidDepth||0)+'</td><td>'+(s.askDepth||0)+'</td></tr>';
+  }
+  document.getElementById('statsTable').innerHTML = html;
+}
+
+async function loadChart() {
+  const sym = document.getElementById('chartSymbol');
+  const symName = sym.options[sym.selectedIndex] ? sym.options[sym.selectedIndex].textContent.split(' ')[0] : 'AAPL';
+  try {
+    const resp = await fetch('/chart/'+symName+'?period='+chartPeriod);
+    const bars = await resp.json();
+    updateChart(bars, symName);
+  } catch(e) {}
+}
+
+function updateChart(bars, symName) {
+  const labels = bars.map(b => new Date(b.bucket * 1000).toLocaleTimeString());
+  const closes = bars.map(b => b.close);
+  const volumes = bars.map(b => b.volume);
+  if (priceChart) priceChart.destroy();
+  const ctx = document.getElementById('priceChart').getContext('2d');
+  priceChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: symName + ' Price',
+        data: closes, borderColor: '#00d4aa', backgroundColor: '#00d4aa22',
+        fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2, yAxisID: 'y',
+      },{
+        label: 'Volume', data: volumes, type: 'bar',
+        backgroundColor: '#4a90d944', yAxisID: 'y1',
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: {mode:'index', intersect:false},
+      plugins: {legend:{display:false}},
+      scales: {
+        x: {ticks:{color:'#5a6088',maxTicksLimit:10},grid:{color:'#1a1f45'}},
+        y: {position:'left',ticks:{color:'#00d4aa'},grid:{color:'#1a1f45'}},
+        y1:{position:'right',ticks:{color:'#4a90d9'},grid:{display:false}},
+      }
+    }
+  });
+}
+
+function setChartPeriod(btn, period) {
+  chartPeriod = period;
+  document.querySelectorAll('.chart-controls button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  loadChart();
+}
+
+async function loadLeaderboard() {
+  try {
+    const resp = await fetch('/ch/leaderboard');
+    const members = await resp.json();
+    let html = '';
+    members.forEach((m, i) => {
+      const cls = (m.total_value||m.capital) >= 100000 ? 'green' : 'red';
+      html += '<div class="lb-row"><span class="lb-rank">'+(i+1)+'</span>' +
+        '<span class="lb-name">'+m.member_id+'</span>' +
+        '<span class="lb-val '+cls+'">&euro;'+((m.total_value||m.capital)/1000).toFixed(1)+'k</span></div>';
     });
-    evtSource.addEventListener('trade', e => {
-        refreshData();
-    });
-    evtSource.addEventListener('snapshot', e => {
-        refreshData();
-    });
-    evtSource.addEventListener('session', e => {
-        const d = JSON.parse(e.data);
-        updateSessionStatus(d.status);
-    });
+    document.getElementById('leaderboard').innerHTML = html || '<div class="muted">CH not connected</div>';
+  } catch(e) {
+    document.getElementById('leaderboard').innerHTML = '<div class="muted">CH not connected</div>';
+  }
 }
 
-function updateSessionStatus(status) {
-    const dot = document.getElementById('statusDot');
-    dot.className = 'status-dot ' + (status === 'active' ? 'active' : status === 'suspended' ? 'suspended' : '');
+async function submitOrder(side) {
+  const data = {
+    symbolIdx: parseInt(document.getElementById('orderSymbol').value),
+    side, orderType: document.getElementById('orderType').value,
+    price: parseFloat(document.getElementById('orderPrice').value),
+    quantity: parseInt(document.getElementById('orderQty').value),
+    tif: document.getElementById('orderTif').value,
+  };
+  await fetch('/order/new', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)});
 }
 
-// ── Data Refresh ───────────────────────────────────────────────────
-
-async function refreshData() {
-    try {
-        const res = await fetch(API + '/data');
-        const data = await res.json();
-        renderOrders(data.orders);
-        renderTrades(data.trades);
-        renderSnapshots(data.snapshots);
-        renderStats(data.snapshots);
-        renderTicker(data.snapshots);
-        refreshBook();
-    } catch(e) {}
+async function cancelOrder(id) {
+  await fetch('/order/cancel', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({orderId:id})});
 }
 
-function renderOrders(list) {
-    const active = list.filter(o => o.status === 'New' || o.status === 'PartiallyFilled');
-    document.getElementById('orderCount').textContent = active.length;
-    const tbody = document.getElementById('ordersTable');
-    tbody.innerHTML = list.slice(-30).reverse().map(o => {
-        const sideClass = o.side === 'Buy' ? 'price-bid' : 'price-ask';
-        const canCancel = o.status === 'New' || o.status === 'PartiallyFilled';
-        return `<tr>
-            <td>${o.orderId}</td>
-            <td>${o.symbol}</td>
-            <td class="${sideClass}">${o.side}</td>
-            <td>${o.orderType}</td>
-            <td>${fmt(o.price)}</td>
-            <td>${o.quantity}</td>
-            <td>${o.remainingQty}</td>
-            <td>${o.status}</td>
-            <td>${canCancel ? `<button class="btn" onclick="cancelOrder(${o.orderId})" style="padding:1px 6px;font-size:10px;">X</button>` : ''}</td>
-        </tr>`;
-    }).join('');
+function openAmend(id, price, qty) {
+  document.getElementById('amendOrderId').textContent = id;
+  document.getElementById('amendPrice').value = price;
+  document.getElementById('amendQty').value = qty;
+  document.getElementById('amendModal').classList.add('show');
 }
+function closeAmend() { document.getElementById('amendModal').classList.remove('show'); }
 
-function renderTrades(list) {
-    document.getElementById('tradeCount').textContent = list.length;
-    const tbody = document.getElementById('tradesTable');
-    tbody.innerHTML = list.slice(-30).reverse().map(t => `<tr>
-        <td>${t.tradeId}</td>
-        <td>${t.symbol}</td>
-        <td class="price-neutral">${fmt(t.price)}</td>
-        <td>${t.quantity}</td>
-        <td>${t.buyOrderId}</td>
-        <td>${t.sellOrderId}</td>
-        <td>${ts(t.timestamp)}</td>
-    </tr>`).join('');
-}
-
-function renderSnapshots(snaps) {
-    const tbody = document.getElementById('snapshotTable');
-    tbody.innerHTML = Object.values(snaps).map(s => {
-        const segClass = s.segment === 'EQU' ? 'tag-equ' : 'tag-eqd';
-        return `<tr>
-            <td><b>${s.symbol}</b></td>
-            <td><span class="tag ${segClass}">${s.segment}</span></td>
-            <td class="price-bid">${fmt(s.bestBid)}</td>
-            <td class="price-ask">${fmt(s.bestAsk)}</td>
-            <td>${fmt(s.lastPrice)}</td>
-            <td>${s.volume || 0}</td>
-            <td>${s.tradeCount}</td>
-        </tr>`;
-    }).join('');
-}
-
-function renderTicker(snaps) {
-    const ticker = document.getElementById('ticker');
-    ticker.innerHTML = Object.values(snaps).map(s => {
-        const cls = s.lastPrice > 0 ? 'ticker-up' : 'price-neutral';
-        return `<div class="ticker-item">
-            <span class="ticker-sym">${s.symbol}</span>
-            <span class="${cls}">${fmt(s.lastPrice)}</span>
-        </div>`;
-    }).join('');
-}
-
-function renderStats(snaps) {
-    const panel = document.getElementById('statsPanel');
-    panel.innerHTML = Object.values(snaps).map(s => {
-        const spread = s.bestBid > 0 && s.bestAsk > 0 ? (s.bestAsk - s.bestBid).toFixed(2) : '-';
-        return `<div style="margin-bottom:8px;">
-            <div style="font-weight:600;color:#4fc3f7;margin-bottom:2px;">${s.symbol} <span class="tag ${s.segment==='EQU'?'tag-equ':'tag-eqd'}">${s.segment}</span></div>
-            <div class="stat-row"><span class="stat-label">Last Price</span><span class="stat-value">${fmt(s.lastPrice)}</span></div>
-            <div class="stat-row"><span class="stat-label">Spread</span><span class="stat-value">${spread}</span></div>
-            <div class="stat-row"><span class="stat-label">Volume</span><span class="stat-value">${s.volume || 0}</span></div>
-            <div class="stat-row"><span class="stat-label">Trades</span><span class="stat-value">${s.tradeCount}</span></div>
-            <div class="stat-row"><span class="stat-label">Bid Depth</span><span class="stat-value">${s.bidDepth}</span></div>
-            <div class="stat-row"><span class="stat-label">Ask Depth</span><span class="stat-value">${s.askDepth}</span></div>
-        </div>`;
-    }).join('');
-}
-
-async function refreshBook() {
-    const sym = document.getElementById('bookSymbol').value;
-    try {
-        const res = await fetch(API + '/orderbook/' + sym);
-        const data = await res.json();
-
-        const bidsDiv = document.getElementById('bookBids');
-        const asksDiv = document.getElementById('bookAsks');
-
-        const bids = data.bids || [];
-        const asks = data.asks || [];
-        const maxQty = Math.max(
-            ...bids.map(b => b.qty || 0),
-            ...asks.map(a => a.qty || 0),
-            1
-        );
-
-        bidsDiv.innerHTML = '<h3>BIDS</h3>' + bids.map(b => {
-            const w = Math.round((b.qty / maxQty) * 100);
-            return `<div class="bar bar-bid" style="position:relative;">
-                <div style="position:absolute;top:0;bottom:0;right:0;width:${w}%;background:rgba(76,175,80,0.15);border-radius:2px;"></div>
-                <span style="z-index:1;margin-right:8px;" class="price-bid">${fmt(b.price)}</span>
-                <span style="z-index:1;">${b.qty}</span>
-            </div>`;
-        }).join('');
-
-        asksDiv.innerHTML = '<h3>ASKS</h3>' + asks.map(a => {
-            const w = Math.round((a.qty / maxQty) * 100);
-            return `<div class="bar bar-ask" style="position:relative;">
-                <div style="position:absolute;top:0;bottom:0;left:0;width:${w}%;background:rgba(239,83,80,0.12);border-radius:2px;"></div>
-                <span style="z-index:1;" class="price-ask">${fmt(a.price)}</span>
-                <span style="z-index:1;margin-left:8px;">${a.qty}</span>
-            </div>`;
-        }).join('');
-    } catch(e) {}
-}
-
-// ── Actions ────────────────────────────────────────────────────────
-
-async function submitOrder(forceSide) {
-    const side = forceSide || document.getElementById('fSide').value;
-    document.getElementById('fSide').value = side;
-
-    const body = {
-        symbolIdx: document.getElementById('fSymbol').value,
-        side: side,
-        orderType: document.getElementById('fType').value,
-        tif: document.getElementById('fTif').value,
-        price: document.getElementById('fPrice').value,
-        quantity: document.getElementById('fQty').value,
-    };
-
-    await fetch(API + '/order/new', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(body),
-    });
-    refreshData();
-}
-
-async function cancelOrder(orderId) {
-    await fetch(API + '/order/cancel', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({orderId}),
-    });
-    refreshData();
+async function doAmend() {
+  const id = parseInt(document.getElementById('amendOrderId').textContent);
+  await fetch('/order/amend', {method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({orderId:id, price:parseFloat(document.getElementById('amendPrice').value),
+      quantity:parseInt(document.getElementById('amendQty').value)})});
+  closeAmend();
 }
 
 async function sessionAction(action) {
-    await fetch(API + '/session/' + action, {method: 'POST'});
-    refreshData();
+  await fetch('/session/'+action, {method:'POST'});
 }
 
-// ── Init ───────────────────────────────────────────────────────────
+function updateOrderPrice() {
+  const sid = document.getElementById('orderSymbol').value;
+  const snap = state.snapshots[sid];
+  if (snap && snap.bestAsk > 0) document.getElementById('orderPrice').value = snap.bestAsk;
+  else if (snap && snap.bestBid > 0) document.getElementById('orderPrice').value = snap.bestBid;
+}
 
-connect();
-refreshData();
-setInterval(refreshData, 5000);
+function fmt(v) { return v > 0 ? parseFloat(v).toFixed(2) : '-'; }
+
+init();
 </script>
 </body>
 </html>

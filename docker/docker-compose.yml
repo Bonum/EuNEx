@@ -10,7 +10,7 @@ services:
       KAFKA_CFG_PROCESS_ROLES: controller,broker
       KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
       KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
-      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
       KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
@@ -38,6 +38,10 @@ services:
           --topic eunex.trades --partitions 4 --replication-factor 1
         kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists \
           --topic eunex.market-data --partitions 4 --replication-factor 1
+        kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists \
+          --topic eunex.orders --partitions 4 --replication-factor 1
+        kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists \
+          --topic eunex.control --partitions 1 --replication-factor 1
         echo "Topics created."
 
   eunex:
@@ -49,8 +53,15 @@ services:
         condition: service_completed_successfully
     environment:
       EUNEX_KAFKA_BROKERS: kafka:9092
+      EUNEX_DATA_DIR: /app/data
     ports:
-      - "8080:8080"
+      - "7860:7860"
+      - "8090:8090"
+      - "8091:8091"
+      - "9001:9001"
+    volumes:
+      - eunex_data:/app/data
 
 volumes:
   kafka_data:
+  eunex_data:

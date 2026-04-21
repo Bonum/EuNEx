@@ -21,7 +21,7 @@ RUN mkdir -p build && cd build && \
 FROM ubuntu:22.04
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    librdkafka1 python3 python3-pip \
+    librdkafka1 python3 python3-pip nginx \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip3 install flask
@@ -34,7 +34,17 @@ COPY --from=builder /app/build/test_matching_engine /app/
 COPY --from=builder /app/build/test_threaded_engine /app/
 COPY --from=builder /app/build/simple_match /app/
 COPY --from=builder /app/dashboard/ /app/dashboard/
+COPY --from=builder /app/shared/ /app/shared/
+COPY --from=builder /app/fix_gateway/ /app/fix_gateway/
+COPY --from=builder /app/clearing_house/ /app/clearing_house/
+COPY --from=builder /app/run.sh /app/run.sh
+COPY --from=builder /app/docker/nginx.conf /etc/nginx/conf.d/default.conf
 
-EXPOSE 8080
+RUN mkdir -p /app/data /app/logs /app/.pids && chmod +x /app/run.sh
 
-CMD ["./eunex_me"]
+ENV EUNEX_DATA_DIR=/app/data
+ENV PYTHONPATH=/app
+
+EXPOSE 7860 8080 8081 9001
+
+CMD ["/app/run.sh"]
