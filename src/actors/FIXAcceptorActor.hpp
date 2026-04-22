@@ -1,13 +1,13 @@
 #pragma once
 // ════════════════════════════════════════════════════════════════════
-// FIXGatewayActor — C++ FIX 4.4 TCP acceptor
+// FIXAcceptorActor — C++ FIX 4.4 TCP acceptor
 //
 // Optiq equivalent: OEG FIX Gateway (FIX 4.4 acceptor for OE frontal)
 //
 // Runs a TCP accept loop on a background thread. Each connected client
 // gets a recv thread that parses FIX messages and enqueues them to the
 // actor's mailbox. The actor thread pushes NewOrderEvent / CancelEvent
-// to OEGateway via Event::Pipe.
+// to OEGActor via Event::Pipe.
 //
 // Supported messages:
 //   Logon (35=A), Logout (35=5), Heartbeat (35=0),
@@ -40,12 +40,12 @@ struct FIXSession {
     std::thread recvThread;
 };
 
-class FIXGatewayActor : public tredzone::Actor {
+class FIXAcceptorActor : public tredzone::Actor {
 public:
     struct Service : tredzone::AsyncService {};
 
-    FIXGatewayActor(const tredzone::ActorId& oeGatewayId, uint16_t port = 9001);
-    ~FIXGatewayActor();
+    FIXAcceptorActor(const tredzone::ActorId& oeGatewayId, uint16_t port = 9001);
+    ~FIXAcceptorActor();
 
     void onEvent(const ExecReportEvent& event);
 

@@ -3,9 +3,9 @@
 //
 // Multi-threaded actor topology (mirrors Optiq architecture):
 //
-//   Core 0: OEGatewayActor + FIXGatewayActor
-//   Core 1: OrderBookActor per symbol (matching engine)
-//   Core 2: MarketDataActor
+//   Core 0: OEGActor + FIXAcceptorActor
+//   Core 1: MECoreActor per symbol (matching engine)
+//   Core 2: MDGActor
 //   Core 3: ClearingHouseActor + AITraderActor
 //
 // Optiq equivalent topology:
@@ -15,11 +15,11 @@
 // ════════════════════════════════════════════════════════════════════
 
 #include "engine/SimplxShim.hpp"
-#include "actors/OrderBookActor.hpp"
-#include "actors/OEGatewayActor.hpp"
-#include "actors/MarketDataActor.hpp"
+#include "actors/MECoreActor.hpp"
+#include "actors/OEGActor.hpp"
+#include "actors/MDGActor.hpp"
 #include "actors/ClearingHouseActor.hpp"
-#include "actors/FIXGatewayActor.hpp"
+#include "actors/FIXAcceptorActor.hpp"
 #include "actors/AITraderActor.hpp"
 #include <iostream>
 #include <thread>
@@ -52,10 +52,10 @@ int main() {
     std::vector<SymbolIndex_t> allSymbols = {SYM_AAPL, SYM_MSFT, SYM_GOOGL, SYM_EURO50};
 
     // ── Core 0: OE Gateway ────────────────────────────────────────
-    auto oeGateway = std::make_unique<OEGatewayActor>();
+    auto oeGateway = std::make_unique<OEGActor>();
 
     // ── Core 2: Market Data ───────────────────────────────────────
-    auto mdActor = std::make_unique<MarketDataActor>();
+    auto mdActor = std::make_unique<MDGActor>();
 
     // ── Core 3: Clearing House ────────────────────────────────────
     auto chActor = std::make_unique<ClearingHouseActor>();
@@ -72,13 +72,13 @@ int main() {
     }
 
     // ── Core 1: Order Books (per symbol) ──────────────────────────
-    auto bookAAPL = std::make_unique<OrderBookActor>(
+    auto bookAAPL = std::make_unique<MECoreActor>(
         SYM_AAPL, oeGateway->getActorId(), mdActor->getActorId(), chActor->getActorId());
-    auto bookMSFT = std::make_unique<OrderBookActor>(
+    auto bookMSFT = std::make_unique<MECoreActor>(
         SYM_MSFT, oeGateway->getActorId(), mdActor->getActorId(), chActor->getActorId());
-    auto bookGOOGL = std::make_unique<OrderBookActor>(
+    auto bookGOOGL = std::make_unique<MECoreActor>(
         SYM_GOOGL, oeGateway->getActorId(), mdActor->getActorId(), chActor->getActorId());
-    auto bookEURO50 = std::make_unique<OrderBookActor>(
+    auto bookEURO50 = std::make_unique<MECoreActor>(
         SYM_EURO50, oeGateway->getActorId(), mdActor->getActorId(), chActor->getActorId());
 
     oeGateway->mapSymbol(SYM_AAPL, bookAAPL->getActorId());
@@ -87,7 +87,7 @@ int main() {
     oeGateway->mapSymbol(SYM_EURO50, bookEURO50->getActorId());
 
     // ── Core 0: FIX Gateway ──────────────────────────────────────
-    auto fixGateway = std::make_unique<FIXGatewayActor>(oeGateway->getActorId(), 9001);
+    auto fixGateway = std::make_unique<FIXAcceptorActor>(oeGateway->getActorId(), 9001);
 
     // ── Core 3: AI Trader ─────────────────────────────────────────
     auto aiTrader = std::make_unique<AITraderActor>(oeGateway->getActorId(), allSymbols);
@@ -98,14 +98,14 @@ int main() {
 
     // ── Print topology ────────────────────────────────────────────
     std::cout << "Actor topology:\n";
-    std::cout << "  Core 0: OEGateway (id=" << oeGateway->getActorId().id
-              << "), FIXGateway (id=" << fixGateway->getActorId().id << ")\n";
+    std::cout << "  Core 0: OEG (id=" << oeGateway->getActorId().id
+              << "), FIXAcceptor (id=" << fixGateway->getActorId().id << ")\n";
     std::cout << "  Core 1: Book AAPL (id=" << bookAAPL->getActorId().id
               << "), MSFT (id=" << bookMSFT->getActorId().id
               << "), GOOGL (id=" << bookGOOGL->getActorId().id
               << "), EURO50 (id=" << bookEURO50->getActorId().id << ")\n";
-    std::cout << "  Core 2: MarketData (id=" << mdActor->getActorId().id << ")\n";
-    std::cout << "  Core 3: ClearingHouse (id=" << chActor->getActorId().id
+    std::cout << "  Core 2: MDG (id=" << mdActor->getActorId().id << ")\n";
+    std::cout << "  Core 3: CH (id=" << chActor->getActorId().id
               << "), AITrader (id=" << aiTrader->getActorId().id << ")\n\n";
 
     std::cout << "Services:\n";

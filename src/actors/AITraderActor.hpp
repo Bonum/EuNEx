@@ -9,7 +9,7 @@
 //
 // Uses Actor::Callback for periodic trading decisions (~30s intervals).
 // Receives BookUpdateEvent for BBO data and TradeEvent for price history.
-// Pushes NewOrderEvent to OEGateway.
+// Pushes NewOrderEvent to OEGActor.
 // ════════════════════════════════════════════════════════════════════
 
 #include "engine/SimplxShim.hpp"

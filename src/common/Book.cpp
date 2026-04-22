@@ -1,14 +1,14 @@
-#include "common/OrderBook.hpp"
+#include "common/Book.hpp"
 #include <algorithm>
 
 namespace eunex {
 
-OrderBook::OrderBook(SymbolIndex_t symbolIdx)
+Book::Book(SymbolIndex_t symbolIdx)
     : symbolIdx_(symbolIdx) {}
 
 // ── New Order Entry ────────────────────────────────────────────────
 
-void OrderBook::newOrder(Order& order, const TradeCallback& onTrade,
+void Book::newOrder(Order& order, const TradeCallback& onTrade,
                          const ExecCallback& onExec) {
     order.orderId = allocateOrderId();
     order.remainingQty = order.quantity;
@@ -76,7 +76,7 @@ void OrderBook::newOrder(Order& order, const TradeCallback& onTrade,
 
 // ── Matching: Buy against Asks ─────────────────────────────────────
 
-void OrderBook::matchBuy(Order& incoming, const TradeCallback& onTrade,
+void Book::matchBuy(Order& incoming, const TradeCallback& onTrade,
                          const ExecCallback& onExec) {
     auto it = asks_.begin();
     while (incoming.remainingQty > 0 && it != asks_.end()) {
@@ -133,7 +133,7 @@ void OrderBook::matchBuy(Order& incoming, const TradeCallback& onTrade,
 
 // ── Matching: Sell against Bids ────────────────────────────────────
 
-void OrderBook::matchSell(Order& incoming, const TradeCallback& onTrade,
+void Book::matchSell(Order& incoming, const TradeCallback& onTrade,
                           const ExecCallback& onExec) {
     auto it = bids_.begin();
     while (incoming.remainingQty > 0 && it != bids_.end()) {
@@ -189,7 +189,7 @@ void OrderBook::matchSell(Order& incoming, const TradeCallback& onTrade,
 
 // ── Cancel ─────────────────────────────────────────────────────────
 
-bool OrderBook::cancelOrder(OrderId_t orderId, ExecutionReport& report) {
+bool Book::cancelOrder(OrderId_t orderId, ExecutionReport& report) {
     auto it = orderIndex_.find(orderId);
     if (it == orderIndex_.end())
         return false;
@@ -232,7 +232,7 @@ bool OrderBook::cancelOrder(OrderId_t orderId, ExecutionReport& report) {
 
 // ── Modify (Cancel-Replace) ────────────────────────────────────────
 
-bool OrderBook::modifyOrder(OrderId_t orderId, Price_t newPrice, Quantity_t newQty,
+bool Book::modifyOrder(OrderId_t orderId, Price_t newPrice, Quantity_t newQty,
                             ExecutionReport& report) {
     ExecutionReport cancelRpt{};
     if (!cancelOrder(orderId, cancelRpt))
@@ -259,7 +259,7 @@ bool OrderBook::modifyOrder(OrderId_t orderId, Price_t newPrice, Quantity_t newQ
 
 // ── Insert resting order ───────────────────────────────────────────
 
-void OrderBook::insertResting(Order& order) {
+void Book::insertResting(Order& order) {
     orderIndex_[order.orderId] = {order.side, order.price};
     if (order.side == Side::Buy) {
         bids_[order.price].push_back(order);
@@ -268,7 +268,7 @@ void OrderBook::insertResting(Order& order) {
     }
 }
 
-void OrderBook::removeOrder(OrderId_t orderId, Side side, Price_t price) {
+void Book::removeOrder(OrderId_t orderId, Side side, Price_t price) {
     orderIndex_.erase(orderId);
     if (side == Side::Buy) {
         auto it = bids_.find(price);
@@ -292,7 +292,7 @@ void OrderBook::removeOrder(OrderId_t orderId, Side side, Price_t price) {
 // ── Query helpers ──────────────────────────────────────────────────
 
 template<typename MapT>
-std::vector<OrderBook::Level> OrderBook::getLevels(const MapT& map, int depth) const {
+std::vector<Book::Level> Book::getLevels(const MapT& map, int depth) const {
     std::vector<Level> result;
     result.reserve(depth);
     int count = 0;
@@ -306,21 +306,21 @@ std::vector<OrderBook::Level> OrderBook::getLevels(const MapT& map, int depth) c
     return result;
 }
 
-std::vector<OrderBook::Level> OrderBook::getBids(int depth) const {
+std::vector<Book::Level> Book::getBids(int depth) const {
     return getLevels(bids_, depth);
 }
 
-std::vector<OrderBook::Level> OrderBook::getAsks(int depth) const {
+std::vector<Book::Level> Book::getAsks(int depth) const {
     return getLevels(asks_, depth);
 }
 
-size_t OrderBook::bidCount() const {
+size_t Book::bidCount() const {
     size_t count = 0;
     for (auto& [_, orders] : bids_) count += orders.size();
     return count;
 }
 
-size_t OrderBook::askCount() const {
+size_t Book::askCount() const {
     size_t count = 0;
     for (auto& [_, orders] : asks_) count += orders.size();
     return count;

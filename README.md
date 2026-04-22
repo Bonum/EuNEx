@@ -8,23 +8,32 @@ ported from the [StockEx](https://github.com/Bonum/StockEx) Python prototype.
 ```
 StockEx (Python/Kafka)              EuNEx (C++/Simplx)                 Optiq (Production)
 ─────────────────────               ──────────────────                  ──────────────────
-fix_oeg_server.py        →   OEGatewayActor           →   OEActor
+fix_oeg_server.py        →   OEGActor                 →   OEActor
   Kafka 'orders' topic   →     Event::Pipe            →     Simplx Event::Pipe
-matcher.py               →   OrderBookActor           →   LogicalCoreActor + Book
-  match_order()          →     OrderBook::newOrder()   →     RecoveryCause → IACA Cause → forwardToBook
-  handle_cancel()        →     OrderBook::cancelOrder()→     CancelOrderData
-  handle_amend()         →     OrderBook::modifyOrder()→     ModifyOrderData
+matcher.py               →   MECoreActor              →   LogicalCoreActor + Book
+  match_order()          →     Book::newOrder()        →     RecoveryCause → IACA Cause → forwardToBook
+  handle_cancel()        →     Book::cancelOrder()     →     CancelOrderData
+  handle_amend()         →     Book::modifyOrder()     →     ModifyOrderData
   Kafka 'trades' topic   →     TradeEvent via Pipe     →     IACA fragment chain
-dashboard.py (SSE)       →   MarketDataActor           →   MDLimitLogicalCoreHandler
+dashboard.py (SSE)       →   MDGActor                  →   MDLimitLogicalCoreHandler
   /orderbook/<sym>       →     BookUpdateEvent         →     PublishLimitUpdateRequest
   /trades                →     TradeEvent              →     IACA → IA SBE message
-database.py (SQLite)     →   SQLite persistence        →   RecoveryProxy → Kafka
-  save_trade()           →     dashboard/database.py   →   PersistenceAgent → Kafka produce
-fix_oeg_server.py        →   fix_gateway/fix_server.py →   FIX 4.4 OEG Acceptor
+database.py (SQLite)     →   RecoveryProxy (memory)    →   RecoveryProxy → Kafka
+  save_trade()           →     FragmentStore::append() →   PersistenceAgent → Kafka produce
+fix_oeg_server.py        →   FIXAcceptorActor          →   FIX 4.4 OEG Acceptor
   NewOrderSingle         →     35=D handling           →     Optiq FIX gateway
   ExecutionReport        →     35=8 response           →     Execution reports
-ch_ai_trader.py          →   clearing_house/           →   Clearing House members
-  AI strategies          →     momentum/mean_revert    →     Trading obligations
+ch_ai_trader.py          →   ClearingHouseActor        →   Clearing House (PTB path)
+  AI strategies          →   AITraderActor             →   Trading obligations
+```
+
+## Actor Topology (v0.4)
+
+```
+ Core 0: OEGActor + FIXAcceptorActor     ← Order entry & FIX protocol
+ Core 1: MECoreActor (per symbol)         ← Matching engine (Book)
+ Core 2: MDGActor                         ← Market data snapshots
+ Core 3: ClearingHouseActor + AITrader    ← Post-trade & AI members
 ```
 
 ## Service Architecture
@@ -44,19 +53,18 @@ ch_ai_trader.py          →   clearing_house/           →   Clearing House me
 │ Trade Charts    │ │ Leaderboard     │ │ NewOrder/Cancel  │
 │ OHLCV History   │ │ Portfolios      │ │ Amend/ExecRpt   │
 │ SQLite DB       │ │ Settlements     │ │                  │
-│ SSE Streaming   │ │ SQLite DB       │ │                  │
-└────────┬────────┘ └��──────┬──────────┘ └────────┬────────┘
-         │                  │                      │
-         │    HTTP REST     │    HTTP REST          │
-         ◄──────────────────┘◄─────────────────────┘
-         │
-         ▼
-┌─────────────────────────────┐
-│    C++ Matching Engine      │
-│    (eunex_me)               │
-│    Multi-threaded actors    │
-│    Price-time priority      │
-└─────────────────────────────┘
+│ SSE Streaming   │ │                 │ │                  │
+└────────┬────────┘ └────────┬────────┘ └────────┬────────┘
+         │                   │                    │
+         └───────────────────┴────────────────────┘
+                             │
+                             ▼
+               ┌─────────────────────────────┐
+               │    C++ Matching Engine      │
+               │    (eunex_me)               │
+               │    Multi-threaded actors    │
+               │    Price-time priority      │
+               └─────────────────────────────┘
 ```
 
 ## Quick Start (Linux)
@@ -95,31 +103,30 @@ docker compose up --build
 ## Build C++ Engine
 
 ```bash
-mkdir build && cd build
-cmake ..
-cmake --build . --config Release
+cmake -B build -DEUNEX_BUILD_TESTS=ON
+cmake --build build --config Release
 
-# Run matching engine demo
-./eunex_me
+# Run matching engine
+./build/Release/eunex_me
 
-# Run all tests (26 tests)
-ctest
+# Run all tests (6 suites)
+cd build && ctest -C Release
 ```
 
 ## With Kafka Persistence
 
 ```bash
-cmake -DEUNEX_USE_KAFKA=ON ..
-cmake --build . --config Release
+cmake -B build -DEUNEX_USE_KAFKA=ON
+cmake --build build --config Release
 ```
 
 ## FIX Gateway
 
-```bash
-# Start FIX server (requires dashboard running)
-python fix_gateway/fix_server.py
+The C++ engine includes a built-in FIX 4.4 acceptor on TCP port 9001.
+A Python FIX gateway is also available:
 
-# Test with built-in client
+```bash
+python fix_gateway/fix_server.py
 python fix_gateway/fix_server.py test
 ```
 
@@ -128,49 +135,32 @@ OrderCancelReplaceRequest (35=G), ExecutionReport (35=8).
 
 ## Clearing House
 
-```bash
-# Start clearing house (requires dashboard running)
-python clearing_house/app.py
-```
+10 AI trading members (MBR01-MBR10) with 3 strategies:
+- **Momentum**: follow price trends
+- **Mean Reversion**: fade price moves
+- **Random**: noise trading
 
-Features:
-- 10 AI trading members (MBR01-MBR10) with 3 strategies
-- Strategies: momentum, mean_reversion, random
-- Member portal with login, portfolio, order submission
-- Leaderboard with capital, holdings, P&L
-- Daily trading obligation (min 20 securities)
-- EOD settlement
-
-## Web Dashboard
-
-Features:
-- Real-time order book with bid/ask depth bars
-- OHLCV price charts (1H, 8H, 1D, 1W) via Chart.js
-- Order entry with Limit/Market, TIF (Day/GTC/IOC/FOK)
-- Order amend and cancel
-- Trade blotter with history
-- Market snapshots (BBO, last price, volume)
-- Clearing House leaderboard integration
-- Session controls (Start/Suspend/Resume/End Day)
-- SSE real-time streaming
-- SQLite persistence for orders, trades, OHLCV
-- EQU (Cash/Equities) and EQD (Derivatives) segments
+Features: capital tracking, holdings per symbol, P&L, leaderboard.
 
 ## Project Structure
 
 ```
 EuNEx/
 ├── src/                                # C++ matching engine
-│   ├── main.cpp                        # Entry point
+│   ├── main.cpp                        # Entry point, actor wiring
 │   ├── engine/SimplxShim.hpp           # Multi-threaded actor engine
 │   ├── common/
 │   │   ├── Types.hpp                   # Price, Order, Trade, enums
-│   │   ├── OrderBook.hpp/cpp           # Price-time priority matching
+│   │   └── Book.hpp/cpp               # Price-time priority matching
 │   ├── actors/
 │   │   ├── Events.hpp                  # Inter-actor event types
-│   │   ├── OrderBookActor.hpp/cpp      # Matching engine actor
-│   │   ├── OEGatewayActor.hpp/cpp      # Order entry gateway
-│   │   └── MarketDataActor.hpp/cpp     # Market data publisher
+│   │   ├── OEGActor.hpp/cpp           # Order Entry Gateway
+│   │   ├── MECoreActor.hpp/cpp        # Matching Engine core (per symbol)
+│   │   ├── MDGActor.hpp/cpp           # Market Data Gateway
+│   │   ├── FIXAcceptorActor.hpp/cpp   # FIX 4.4 TCP acceptor
+│   │   ├── ClearingHouseActor.hpp/cpp # Trade clearing & member positions
+│   │   └── AITraderActor.hpp/cpp      # Automated trading members
+│   ├── net/SocketCompat.hpp           # Cross-platform socket abstraction
 │   ├── persistence/
 │   │   ├── PersistenceStore.hpp        # Abstract store + InMemoryStore
 │   │   └── KafkaStore.hpp              # Kafka persistence (optional)
@@ -183,34 +173,44 @@ EuNEx/
 │   ├── database.py                     # SQLite (orders, trades, OHLCV)
 │   └── templates/index.html            # Trading UI with Chart.js
 ├── fix_gateway/
-│   └── fix_server.py                   # FIX 4.4 TCP acceptor
+│   └── fix_server.py                   # Python FIX 4.4 TCP acceptor
 ├── clearing_house/
 │   ├── app.py                          # Flask CH portal + API
-│   ├── ch_database.py                  # SQLite (members, holdings, settlements)
+│   ├── ch_database.py                  # SQLite (members, holdings)
 │   ├── ch_ai_trader.py                 # AI trading strategies
-│   └── templates/                      # CH web UI (login, dashboard, portfolio)
-├── shared/
-│   └── config.py                       # Centralized configuration
+│   └── templates/                      # CH web UI
+├── shared/config.py                    # Centralized configuration
 ├── docker/
 │   ├── docker-compose.yml              # Kafka + EuNEx (all services)
-���   ├── Dockerfile                      # Multi-stage Linux build
+│   ├── Dockerfile                      # Multi-stage Linux build
 │   └── nginx.conf                      # Reverse proxy configuration
-├── run.sh                              # Linux startup script
 ├── tests/
-│   ├── test_orderbook.cpp              # OrderBook unit tests (14)
-│   ├── test_matching_engine.cpp        # Actor integration tests (6)
-│   └── test_threaded_engine.cpp        # Multi-threaded engine tests (6)
+│   ├── test_orderbook.cpp              # Book unit tests (26 cases)
+│   ├── test_matching_engine.cpp        # ME integration tests
+│   ├── test_threaded_engine.cpp        # Multi-threaded engine tests
+│   ├── test_clearing_house.cpp         # Clearing house tests (7 cases)
+│   ├── test_fix_gateway.cpp            # FIX gateway tests (5 cases)
+│   └── test_ai_trader.cpp             # AI trader tests (6 cases)
 ├── examples/
 │   ├── ping_pong.cpp                   # Actor basics tutorial
 │   └── simple_match.cpp                # Matching with Recovery + IACA
-└── docs/process-diagram.md             # Architecture diagrams
+└── docs/
+    ├── developers-guide.md             # Detailed developers guide
+    └── process-diagram.md              # Architecture diagrams
 ```
+
+## Documentation
+
+- **[Developers Guide](docs/developers-guide.md)** — Detailed architecture, data flow, component reference
+- **[Process Diagram](docs/process-diagram.md)** — Optiq architecture diagrams and roadmap
 
 ## Next Steps
 
-1. ~~Add real Simplx integration~~ ✓ Multi-threaded actor engine with mailbox queues
+1. ~~Multi-threaded actor engine~~ ✓ SimplxShim with mailbox queues
 2. ~~Kafka persistence~~ ✓ KafkaStore + Docker Compose (KRaft mode)
-3. **SBE encoding** — replace event structs with SBE-encoded messages
-4. ~~FIX gateway~~ ✓ Pure Python FIX 4.4 TCP acceptor
-5. **Master/Mirror failover** — implement full Recovery replay on Mirror node
-6. ~~Clearing House actors~~ ✓ AI trading members with 3 strategies + portal
+3. ~~FIX gateway~~ ✓ C++ FIXAcceptorActor + Python fallback
+4. ~~Clearing House~~ ✓ ClearingHouseActor + AITraderActor
+5. **SBE encoding** — replace event structs with SBE-encoded messages
+6. **Master/Mirror failover** — implement full Recovery replay on Mirror node
+7. **Trading phases** — pre-open, uncrossing, continuous, close, TAL
+8. **Additional order types** — Stop, Pegged, Mid-Point, Iceberg

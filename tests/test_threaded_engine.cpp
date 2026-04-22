@@ -1,7 +1,7 @@
 #include "engine/SimplxShim.hpp"
-#include "actors/OrderBookActor.hpp"
-#include "actors/OEGatewayActor.hpp"
-#include "actors/MarketDataActor.hpp"
+#include "actors/MECoreActor.hpp"
+#include "actors/OEGActor.hpp"
+#include "actors/MDGActor.hpp"
 #include <iostream>
 #include <cassert>
 #include <atomic>
@@ -29,8 +29,8 @@ static int testsFailed = 0;
 
 void test_engine_multi_core_creation() {
     Engine::StartSequence seq;
-    seq.addActor<OEGatewayActor>(0);
-    seq.addActor<MarketDataActor>(2);
+    seq.addActor<OEGActor>(0);
+    seq.addActor<MDGActor>(2);
     Engine engine(seq);
 
     ASSERT_EQ(engine.coreCount(), 2UL);
@@ -39,12 +39,12 @@ void test_engine_multi_core_creation() {
 // ── Test: cross-core event delivery via mailbox ────────────────────
 
 void test_cross_core_event_delivery() {
-    auto oeGateway = std::make_unique<OEGatewayActor>();
-    auto mdActor   = std::make_unique<MarketDataActor>();
+    auto oeGateway = std::make_unique<OEGActor>();
+    auto mdActor   = std::make_unique<MDGActor>();
 
     // Manually assign to different cores
     constexpr SymbolIndex_t SYM = 1;
-    auto book = std::make_unique<OrderBookActor>(
+    auto book = std::make_unique<MECoreActor>(
         SYM, oeGateway->getActorId(), mdActor->getActorId());
 
     oeGateway->mapSymbol(SYM, book->getActorId());
@@ -60,15 +60,15 @@ void test_cross_core_event_delivery() {
 // ── Test: threaded engine runs matching across cores ───────────────
 
 struct ThreadedFixture {
-    OEGatewayActor* oeGateway = nullptr;
-    MarketDataActor* mdActor  = nullptr;
+    OEGActor* oeGateway = nullptr;
+    MDGActor* mdActor  = nullptr;
     std::unique_ptr<Engine> engine;
 
     ThreadedFixture() {
         Engine::StartSequence seq;
-        seq.addActor<OEGatewayActor>(0);
-        seq.addActor<MarketDataActor>(2);
-        seq.addActor<OrderBookActor>(1,
+        seq.addActor<OEGActor>(0);
+        seq.addActor<MDGActor>(2);
+        seq.addActor<MECoreActor>(1,
             SymbolIndex_t(1), ActorId{1, 0}, ActorId{2, 2});
 
         engine = std::make_unique<Engine>(seq);
@@ -77,11 +77,11 @@ struct ThreadedFixture {
 
 void test_threaded_matching() {
     // Use synchronous mode for deterministic testing
-    auto oeGateway = std::make_unique<OEGatewayActor>();
-    auto mdActor   = std::make_unique<MarketDataActor>();
+    auto oeGateway = std::make_unique<OEGActor>();
+    auto mdActor   = std::make_unique<MDGActor>();
 
     constexpr SymbolIndex_t SYM = 1;
-    auto book = std::make_unique<OrderBookActor>(
+    auto book = std::make_unique<MECoreActor>(
         SYM, oeGateway->getActorId(), mdActor->getActorId());
 
     oeGateway->mapSymbol(SYM, book->getActorId());
@@ -124,9 +124,9 @@ void test_mailbox_concurrent_enqueue() {
 
 void test_engine_core_assignment() {
     Engine::StartSequence seq;
-    seq.addActor<OEGatewayActor>(0);
-    seq.addActor<MarketDataActor>(1);
-    seq.addActor<OEGatewayActor>(2);
+    seq.addActor<OEGActor>(0);
+    seq.addActor<MDGActor>(1);
+    seq.addActor<OEGActor>(2);
     Engine engine(seq);
 
     ASSERT_EQ(engine.coreCount(), 3UL);
@@ -136,11 +136,11 @@ void test_engine_core_assignment() {
 
 void test_sync_backward_compat() {
     // Actors created outside Engine should work exactly as before
-    auto oeGateway = std::make_unique<OEGatewayActor>();
-    auto mdActor   = std::make_unique<MarketDataActor>();
+    auto oeGateway = std::make_unique<OEGActor>();
+    auto mdActor   = std::make_unique<MDGActor>();
 
     constexpr SymbolIndex_t SYM = 1;
-    auto book = std::make_unique<OrderBookActor>(
+    auto book = std::make_unique<MECoreActor>(
         SYM, oeGateway->getActorId(), mdActor->getActorId());
 
     oeGateway->mapSymbol(SYM, book->getActorId());

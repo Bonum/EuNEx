@@ -1,5 +1,5 @@
 #pragma once
-// Cross-platform socket abstraction for FIXGatewayActor
+// Cross-platform socket abstraction for FIXAcceptorActor
 
 #ifdef _WIN32
   #ifndef WIN32_LEAN_AND_MEAN

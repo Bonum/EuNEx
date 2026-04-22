@@ -3,9 +3,9 @@
 // ════════════════════════════════════════════════════════════════════
 
 #include "actors/ClearingHouseActor.hpp"
-#include "actors/OrderBookActor.hpp"
-#include "actors/OEGatewayActor.hpp"
-#include "actors/MarketDataActor.hpp"
+#include "actors/MECoreActor.hpp"
+#include "actors/OEGActor.hpp"
+#include "actors/MDGActor.hpp"
 #include <iostream>
 #include <cassert>
 
@@ -142,14 +142,14 @@ void test_leaderboard_sorted() {
 }
 
 void test_trade_with_clearing_pipe() {
-    auto oe = std::make_unique<OEGatewayActor>();
-    auto md = std::make_unique<MarketDataActor>();
+    auto oe = std::make_unique<OEGActor>();
+    auto md = std::make_unique<MDGActor>();
     auto ch = std::make_unique<ClearingHouseActor>();
 
     ch->mapSession(1, 1);
     ch->mapSession(2, 2);
 
-    auto book = std::make_unique<OrderBookActor>(
+    auto book = std::make_unique<MECoreActor>(
         1, oe->getActorId(), md->getActorId(), ch->getActorId());
     oe->mapSymbol(1, book->getActorId());
 

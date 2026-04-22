@@ -1,10 +1,10 @@
 #pragma once
 // ════════════════════════════════════════════════════════════════════
-// OEGatewayActor — Order Entry Gateway
+// OEGActor — Order Entry Gateway
 //
 // StockEx equivalent: fix_oeg_server.py + consumer.py
 //   - Receives FIX messages, normalizes them, pushes to Kafka
-//   - Here: receives external input and routes to OrderBookActor
+//   - Here: receives external input and routes to MECoreActor
 //
 // Optiq equivalent: OEActor
 //   - Receives messages from OE frontal (SBE over TCP)
@@ -20,11 +20,11 @@
 
 namespace eunex {
 
-class OEGatewayActor : public tredzone::Actor {
+class OEGActor : public tredzone::Actor {
 public:
     struct Service : tredzone::AsyncService {};
 
-    OEGatewayActor();
+    OEGActor();
 
     // Register an OrderBook actor for a symbol
     void mapSymbol(SymbolIndex_t symbolIdx, const tredzone::ActorId& bookActorId);

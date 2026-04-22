@@ -4,7 +4,7 @@
 //
 // Optiq equivalent: Clearing House downstream from Kafka Bus / PTB
 //
-// Receives TradeEvent from OrderBookActor(s), attributes trades to
+// Receives TradeEvent from MECoreActor(s), attributes trades to
 // members via SessionId→MemberId mapping, maintains capital and
 // holdings per member. Exposes thread-safe getLeaderboard() for
 // the Python bridge to read.

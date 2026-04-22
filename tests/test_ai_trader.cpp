@@ -3,9 +3,9 @@
 // ════════════════════════════════════════════════════════════════════
 
 #include "actors/AITraderActor.hpp"
-#include "actors/OEGatewayActor.hpp"
-#include "actors/OrderBookActor.hpp"
-#include "actors/MarketDataActor.hpp"
+#include "actors/OEGActor.hpp"
+#include "actors/MECoreActor.hpp"
+#include "actors/MDGActor.hpp"
 #include "actors/ClearingHouseActor.hpp"
 #include <iostream>
 #include <cassert>
@@ -30,18 +30,18 @@ static int testsFailed = 0;
 // ── Tests ─────────────────────────────────────────────────────────
 
 void test_ai_trader_creates() {
-    auto oe = std::make_unique<OEGatewayActor>();
+    auto oe = std::make_unique<OEGActor>();
     std::vector<SymbolIndex_t> syms = {1, 2};
     auto ai = std::make_unique<AITraderActor>(oe->getActorId(), syms);
     ASSERT_TRUE(ai != nullptr);
 }
 
 void test_ai_submits_orders() {
-    auto oe = std::make_unique<OEGatewayActor>();
-    auto md = std::make_unique<MarketDataActor>();
+    auto oe = std::make_unique<OEGActor>();
+    auto md = std::make_unique<MDGActor>();
 
-    auto book1 = std::make_unique<OrderBookActor>(1, oe->getActorId(), md->getActorId());
-    auto book2 = std::make_unique<OrderBookActor>(2, oe->getActorId(), md->getActorId());
+    auto book1 = std::make_unique<MECoreActor>(1, oe->getActorId(), md->getActorId());
+    auto book2 = std::make_unique<MECoreActor>(2, oe->getActorId(), md->getActorId());
     oe->mapSymbol(1, book1->getActorId());
     oe->mapSymbol(2, book2->getActorId());
 
@@ -54,9 +54,9 @@ void test_ai_submits_orders() {
 }
 
 void test_ai_responds_to_book_update() {
-    auto oe = std::make_unique<OEGatewayActor>();
-    auto md = std::make_unique<MarketDataActor>();
-    auto book = std::make_unique<OrderBookActor>(1, oe->getActorId(), md->getActorId());
+    auto oe = std::make_unique<OEGActor>();
+    auto md = std::make_unique<MDGActor>();
+    auto book = std::make_unique<MECoreActor>(1, oe->getActorId(), md->getActorId());
     oe->mapSymbol(1, book->getActorId());
 
     std::vector<SymbolIndex_t> syms = {1};
@@ -76,7 +76,7 @@ void test_ai_responds_to_book_update() {
 }
 
 void test_ai_responds_to_trade() {
-    auto oe = std::make_unique<OEGatewayActor>();
+    auto oe = std::make_unique<OEGActor>();
     std::vector<SymbolIndex_t> syms = {1};
     auto ai = std::make_unique<AITraderActor>(oe->getActorId(), syms);
 
@@ -96,8 +96,8 @@ void test_ai_responds_to_trade() {
 }
 
 void test_ai_with_clearing_house() {
-    auto oe = std::make_unique<OEGatewayActor>();
-    auto md = std::make_unique<MarketDataActor>();
+    auto oe = std::make_unique<OEGActor>();
+    auto md = std::make_unique<MDGActor>();
     auto ch = std::make_unique<ClearingHouseActor>();
 
     for (int i = 0; i < 10; ++i) {
@@ -105,7 +105,7 @@ void test_ai_with_clearing_house() {
                        static_cast<MemberId_t>(i + 1));
     }
 
-    auto book = std::make_unique<OrderBookActor>(
+    auto book = std::make_unique<MECoreActor>(
         1, oe->getActorId(), md->getActorId(), ch->getActorId());
     oe->mapSymbol(1, book->getActorId());
 
@@ -121,13 +121,13 @@ void test_ai_with_clearing_house() {
 }
 
 void test_multiple_symbols() {
-    auto oe = std::make_unique<OEGatewayActor>();
-    auto md = std::make_unique<MarketDataActor>();
+    auto oe = std::make_unique<OEGActor>();
+    auto md = std::make_unique<MDGActor>();
 
     std::vector<SymbolIndex_t> syms = {1, 2, 3, 4};
-    std::vector<std::unique_ptr<OrderBookActor>> books;
+    std::vector<std::unique_ptr<MECoreActor>> books;
     for (auto s : syms) {
-        auto book = std::make_unique<OrderBookActor>(s, oe->getActorId(), md->getActorId());
+        auto book = std::make_unique<MECoreActor>(s, oe->getActorId(), md->getActorId());
         oe->mapSymbol(s, book->getActorId());
         books.push_back(std::move(book));
     }

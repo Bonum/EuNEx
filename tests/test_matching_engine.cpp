@@ -6,9 +6,9 @@
 // execution reports, and market data snapshots.
 // ════════════════════════════════════════════════════════════════════
 
-#include "actors/OrderBookActor.hpp"
-#include "actors/OEGatewayActor.hpp"
-#include "actors/MarketDataActor.hpp"
+#include "actors/MECoreActor.hpp"
+#include "actors/OEGActor.hpp"
+#include "actors/MDGActor.hpp"
 #include <iostream>
 #include <cassert>
 
@@ -32,16 +32,16 @@ static int testsFailed = 0;
 // ── Test fixtures ──────────────────────────────────────────────────
 
 struct Fixture {
-    std::unique_ptr<OEGatewayActor>  oeGateway;
-    std::unique_ptr<MarketDataActor> mdActor;
-    std::unique_ptr<OrderBookActor>  book;
+    std::unique_ptr<OEGActor>  oeGateway;
+    std::unique_ptr<MDGActor> mdActor;
+    std::unique_ptr<MECoreActor>  book;
     static constexpr SymbolIndex_t SYM = 1;
     static constexpr SessionId_t SESS = 1;
 
     Fixture() {
-        oeGateway = std::make_unique<OEGatewayActor>();
-        mdActor   = std::make_unique<MarketDataActor>();
-        book      = std::make_unique<OrderBookActor>(
+        oeGateway = std::make_unique<OEGActor>();
+        mdActor   = std::make_unique<MDGActor>();
+        book      = std::make_unique<MECoreActor>(
             SYM, oeGateway->getActorId(), mdActor->getActorId());
         oeGateway->mapSymbol(SYM, book->getActorId());
     }

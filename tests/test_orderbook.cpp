@@ -5,7 +5,7 @@
 // price-time priority matching with fixed-point prices.
 // ════════════════════════════════════════════════════════════════════
 
-#include "common/OrderBook.hpp"
+#include "common/Book.hpp"
 #include <iostream>
 #include <cassert>
 #include <vector>
@@ -57,7 +57,7 @@ static auto onExec  = [](const ExecutionReport& r) { reports.push_back(r); };
 // ── Tests ──────────────────────────────────────────────────────────
 
 void test_limit_buy_rests_on_empty_book() {
-    OrderBook book(1);
+    Book book(1);
     resetCallbacks();
 
     auto order = makeOrder(Side::Buy, OrderType::Limit, TimeInForce::Day, 100.0, 50);
@@ -70,7 +70,7 @@ void test_limit_buy_rests_on_empty_book() {
 }
 
 void test_limit_sell_rests_on_empty_book() {
-    OrderBook book(1);
+    Book book(1);
     resetCallbacks();
 
     auto order = makeOrder(Side::Sell, OrderType::Limit, TimeInForce::Day, 100.0, 50);
@@ -82,7 +82,7 @@ void test_limit_sell_rests_on_empty_book() {
 }
 
 void test_exact_match() {
-    OrderBook book(1);
+    Book book(1);
     resetCallbacks();
 
     auto sell = makeOrder(Side::Sell, OrderType::Limit, TimeInForce::Day, 50.0, 100);
@@ -99,7 +99,7 @@ void test_exact_match() {
 }
 
 void test_partial_fill() {
-    OrderBook book(1);
+    Book book(1);
     resetCallbacks();
 
     auto sell = makeOrder(Side::Sell, OrderType::Limit, TimeInForce::Day, 50.0, 100);
@@ -118,7 +118,7 @@ void test_partial_fill() {
 }
 
 void test_price_priority() {
-    OrderBook book(1);
+    Book book(1);
     resetCallbacks();
 
     // Two sells at different prices
@@ -138,7 +138,7 @@ void test_price_priority() {
 }
 
 void test_time_priority() {
-    OrderBook book(1);
+    Book book(1);
     resetCallbacks();
 
     // Two sells at same price — first should match first (FIFO)
@@ -156,7 +156,7 @@ void test_time_priority() {
 }
 
 void test_market_order_matches_any_price() {
-    OrderBook book(1);
+    Book book(1);
     resetCallbacks();
 
     auto sell = makeOrder(Side::Sell, OrderType::Limit, TimeInForce::Day, 999.99, 50);
@@ -171,7 +171,7 @@ void test_market_order_matches_any_price() {
 }
 
 void test_market_order_does_not_rest() {
-    OrderBook book(1);
+    Book book(1);
     resetCallbacks();
 
     auto buy = makeOrder(Side::Buy, OrderType::Market, TimeInForce::IOC, 0, 50);
@@ -183,7 +183,7 @@ void test_market_order_does_not_rest() {
 }
 
 void test_ioc_partial_fill_cancel_rest() {
-    OrderBook book(1);
+    Book book(1);
     resetCallbacks();
 
     auto sell = makeOrder(Side::Sell, OrderType::Limit, TimeInForce::Day, 50.0, 30);
@@ -199,7 +199,7 @@ void test_ioc_partial_fill_cancel_rest() {
 }
 
 void test_fok_rejected_when_insufficient() {
-    OrderBook book(1);
+    Book book(1);
     resetCallbacks();
 
     auto sell = makeOrder(Side::Sell, OrderType::Limit, TimeInForce::Day, 50.0, 30);
@@ -215,7 +215,7 @@ void test_fok_rejected_when_insufficient() {
 }
 
 void test_fok_fills_when_sufficient() {
-    OrderBook book(1);
+    Book book(1);
     resetCallbacks();
 
     auto sell = makeOrder(Side::Sell, OrderType::Limit, TimeInForce::Day, 50.0, 100);
@@ -231,7 +231,7 @@ void test_fok_fills_when_sufficient() {
 }
 
 void test_cancel_order() {
-    OrderBook book(1);
+    Book book(1);
     resetCallbacks();
 
     auto sell = makeOrder(Side::Sell, OrderType::Limit, TimeInForce::Day, 50.0, 100);
@@ -245,14 +245,14 @@ void test_cancel_order() {
 }
 
 void test_cancel_nonexistent() {
-    OrderBook book(1);
+    Book book(1);
     ExecutionReport rpt{};
     bool ok = book.cancelOrder(9999, rpt);
     ASSERT_TRUE(!ok);
 }
 
 void test_multi_level_sweep() {
-    OrderBook book(1);
+    Book book(1);
     resetCallbacks();
 
     // Three sell levels

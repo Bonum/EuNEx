@@ -1,6 +1,6 @@
 #pragma once
 // ════════════════════════════════════════════════════════════════════
-// OrderBookActor — The matching engine core
+// MECoreActor — The matching engine core
 //
 // StockEx equivalent: matcher.py (match_order, handle_cancel, handle_amend)
 // Optiq equivalent:   LogicalCoreActor + RecoveryHelperCore + Book
@@ -17,17 +17,17 @@
 // ════════════════════════════════════════════════════════════════════
 
 #include "engine/SimplxShim.hpp"
-#include "common/OrderBook.hpp"
+#include "common/Book.hpp"
 #include "actors/Events.hpp"
 #include <optional>
 
 namespace eunex {
 
-class OrderBookActor : public tredzone::Actor {
+class MECoreActor : public tredzone::Actor {
 public:
     struct Service : tredzone::AsyncService {};
 
-    OrderBookActor(SymbolIndex_t symbolIdx,
+    MECoreActor(SymbolIndex_t symbolIdx,
                    const tredzone::ActorId& oeGatewayId,
                    const tredzone::ActorId& marketDataId,
                    const tredzone::ActorId& clearingHouseId = tredzone::ActorId{});
@@ -37,7 +37,7 @@ public:
     void onEvent(const ModifyOrderEvent& event);
 
 private:
-    OrderBook book_;
+    Book book_;
     tredzone::Actor::Event::Pipe oePipe_;
     tredzone::Actor::Event::Pipe mdPipe_;
     std::optional<tredzone::Actor::Event::Pipe> chPipe_;

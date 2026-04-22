@@ -12,7 +12,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 #include "engine/SimplxShim.hpp"
-#include "common/OrderBook.hpp"
+#include "common/Book.hpp"
 #include "recovery/RecoveryProxy.hpp"
 #include "iaca/Fragment.hpp"
 #include "iaca/IacaAggregator.hpp"
@@ -40,7 +40,7 @@ int main() {
         }
     ));
 
-    OrderBook book(1);
+    Book book(1);
 
     // ── Process a sell order (Optiq-style) ─────────────────────────
     std::cout << "── Processing SELL 100 @ 50.00 ──\n";
@@ -177,7 +177,7 @@ int main() {
     // ── Simulate Mirror replay ─────────────────────────────────────
     std::cout << "\n── Mirror Replay Simulation ──────────────\n";
     RecoveryProxy mirrorProxy(ORIGIN_BOOK, 1, store, /*isMaster=*/false);
-    OrderBook mirrorBook(1);
+    Book mirrorBook(1);
 
     // Effects should NOT fire on mirror
     mirrorProxy.effect([]() {

@@ -1,11 +1,11 @@
 // ════════════════════════════════════════════════════════════════════
-// FIXGatewayActor tests — protocol parsing and symbol mapping
+// FIXAcceptorActor tests — protocol parsing and symbol mapping
 // ════════════════════════════════════════════════════════════════════
 
-#include "actors/FIXGatewayActor.hpp"
-#include "actors/OEGatewayActor.hpp"
-#include "actors/OrderBookActor.hpp"
-#include "actors/MarketDataActor.hpp"
+#include "actors/FIXAcceptorActor.hpp"
+#include "actors/OEGActor.hpp"
+#include "actors/MECoreActor.hpp"
+#include "actors/MDGActor.hpp"
 #include <iostream>
 #include <cassert>
 #include <string>
@@ -30,23 +30,23 @@ static int testsFailed = 0;
 // ── Tests ─────────────────────────────────────────────────────────
 
 void test_symbol_from_string() {
-    ASSERT_EQ(FIXGatewayActor::symbolFromString("AAPL"), 1u);
-    ASSERT_EQ(FIXGatewayActor::symbolFromString("MSFT"), 2u);
-    ASSERT_EQ(FIXGatewayActor::symbolFromString("GOOGL"), 3u);
-    ASSERT_EQ(FIXGatewayActor::symbolFromString("EURO50"), 4u);
+    ASSERT_EQ(FIXAcceptorActor::symbolFromString("AAPL"), 1u);
+    ASSERT_EQ(FIXAcceptorActor::symbolFromString("MSFT"), 2u);
+    ASSERT_EQ(FIXAcceptorActor::symbolFromString("GOOGL"), 3u);
+    ASSERT_EQ(FIXAcceptorActor::symbolFromString("EURO50"), 4u);
 }
 
 void test_symbol_to_string() {
-    ASSERT_TRUE(FIXGatewayActor::symbolToString(1) == "AAPL");
-    ASSERT_TRUE(FIXGatewayActor::symbolToString(2) == "MSFT");
-    ASSERT_TRUE(FIXGatewayActor::symbolToString(3) == "GOOGL");
-    ASSERT_TRUE(FIXGatewayActor::symbolToString(4) == "EURO50");
-    ASSERT_TRUE(FIXGatewayActor::symbolToString(99) == "99");
+    ASSERT_TRUE(FIXAcceptorActor::symbolToString(1) == "AAPL");
+    ASSERT_TRUE(FIXAcceptorActor::symbolToString(2) == "MSFT");
+    ASSERT_TRUE(FIXAcceptorActor::symbolToString(3) == "GOOGL");
+    ASSERT_TRUE(FIXAcceptorActor::symbolToString(4) == "EURO50");
+    ASSERT_TRUE(FIXAcceptorActor::symbolToString(99) == "99");
 }
 
 void test_fix_gateway_creates() {
-    auto oe = std::make_unique<OEGatewayActor>();
-    auto fix = std::make_unique<FIXGatewayActor>(oe->getActorId(), 19010);
+    auto oe = std::make_unique<OEGActor>();
+    auto fix = std::make_unique<FIXAcceptorActor>(oe->getActorId(), 19010);
     ASSERT_TRUE(fix->isRunning());
     ASSERT_EQ(fix->clientCount(), 0);
     fix->stop();
@@ -54,9 +54,9 @@ void test_fix_gateway_creates() {
 }
 
 void test_oe_gateway_routes_new_order_event() {
-    auto oe = std::make_unique<OEGatewayActor>();
-    auto md = std::make_unique<MarketDataActor>();
-    auto book = std::make_unique<OrderBookActor>(1, oe->getActorId(), md->getActorId());
+    auto oe = std::make_unique<OEGActor>();
+    auto md = std::make_unique<MDGActor>();
+    auto book = std::make_unique<MECoreActor>(1, oe->getActorId(), md->getActorId());
     oe->mapSymbol(1, book->getActorId());
 
     NewOrderEvent evt(5001, 1, Side::Buy, OrderType::Limit, TimeInForce::Day,
@@ -68,12 +68,12 @@ void test_oe_gateway_routes_new_order_event() {
 }
 
 void test_exec_report_forwarding() {
-    auto oe = std::make_unique<OEGatewayActor>();
-    auto md = std::make_unique<MarketDataActor>();
-    auto book = std::make_unique<OrderBookActor>(1, oe->getActorId(), md->getActorId());
+    auto oe = std::make_unique<OEGActor>();
+    auto md = std::make_unique<MDGActor>();
+    auto book = std::make_unique<MECoreActor>(1, oe->getActorId(), md->getActorId());
     oe->mapSymbol(1, book->getActorId());
 
-    auto fix = std::make_unique<FIXGatewayActor>(oe->getActorId(), 19011);
+    auto fix = std::make_unique<FIXAcceptorActor>(oe->getActorId(), 19011);
     oe->addExecReportSubscriber(fix->getActorId());
 
     oe->submitNewOrder(1, 1, Side::Buy, OrderType::Limit,

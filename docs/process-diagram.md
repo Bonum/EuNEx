@@ -10,10 +10,10 @@
                                   │
                                   ▼
  ┌────────────────────────────────────────────────────────────────────────────────────┐
- │  OEGatewayActor  (Core 0)                                    ← Optiq: OEG/OEActor│
+ │  OEGActor  (Core 0)                                    ← Optiq: OEG/OEActor│
  │ ┌──────────────────────────────────────────────────────────────────────────────┐   │
  │ │  • Accepts NewOrder / Cancel / Modify requests                              │   │
- │ │  • Validates session, routes by SymbolIndex → correct OrderBookActor        │   │
+ │ │  • Validates session, routes by SymbolIndex → correct MECoreActor        │   │
  │ │  • Sends ExecutionReports back to client (ack, fill, reject)                │   │
  │ └──────────────────────────────────────────────────────────────────────────────┘   │
  └────────────────────────────────┬────────────────────────────────────────────────────┘
@@ -21,7 +21,7 @@
                                   │ (Simplx Event::Pipe — lock-free cross-core delivery)
                                   ▼
  ┌────────────────────────────────────────────────────────────────────────────────────┐
- │  OrderBookActor  (Core 1)  — one per symbol      ← Optiq: LogicalCoreActor + Book│
+ │  MECoreActor  (Core 1)  — one per symbol      ← Optiq: LogicalCoreActor + Book│
  │ ┌──────────────────────────────────────────────────────────────────────────────┐   │
  │ │                        RECOVERY CAUSE                                       │   │
  │ │  RecoveryProxy.cause(persistenceId, order, callback)                        │   │
@@ -31,7 +31,7 @@
  │                                    ▼                                               │
  │ ┌──────────────────────────────────────────────────────────────────────────────┐   │
  │ │                        MATCHING ENGINE                                      │   │
- │ │  OrderBook.newOrder() / cancelOrder() / modifyOrder()                       │   │
+ │ │  Book.newOrder() / cancelOrder() / modifyOrder()                       │   │
  │ │  • Price-time priority matching (std::map<Price, std::deque<Order>>)        │   │
  │ │  • FOK: reject if insufficient liquidity                                    │   │
  │ │  • IOC: fill what's available, cancel remainder                             │   │
@@ -43,7 +43,7 @@
  │ ┌────────────────────┐                    ┌────────────────────────────────────┐   │
  │ │  IACA CAUSE        │                    │  RECOVERY EFFECT (Master only)    │   │
  │ │  IacaFragment:     │                    │  RecoveryProxy.effect(callback)   │   │
- │ │  • BOOK root frag  │                    │  • Sends ExecReport → OEGateway  │   │
+ │ │  • BOOK root frag  │                    │  • Sends ExecReport → OEG  │   │
  │ │  • ACK child frag  │                    │  • Sends TradeEvent → MarketData │   │
  │ │  • TRADE child frag│                    │  • Sends BookUpdate → MarketData │   │
  │ │  (nextCount check) │                    │  • Mirror skips all effects      │   │
@@ -68,7 +68,7 @@
             │ IA message                               │          │
             ▼                                          │          │
  ┌──────────────────────────┐              ┌───────────▼──────────▼──────────────────┐
- │  Future: IDS / PTB /     │              │  MarketDataActor  (Core 2)              │
+ │  Future: IDS / PTB /     │              │  MDGActor  (Core 2)              │
  │  SATURN / Clearing       │              │  ← Optiq: MDLimitLogicalCoreHandler     │
  │ ┌──────────────────────┐ │              │ ┌────────────────────────────────────┐   │
  │ │ IDS: Intraday Data   │ │              │ │ • Maintains BBO snapshot per sym  │   │
@@ -140,17 +140,17 @@
  StockEx (Python/Kafka)          EuNEx (C++/Simplx shim)         Optiq (Production)
  ═══════════════════════         ═══════════════════════          ══════════════════
 
- fix_oeg_server.py         ───▶  OEGatewayActor            ───▶  OEActor (FIX/SBE)
+ fix_oeg_server.py         ───▶  OEGActor                  ───▶  OEActor (FIX/SBE)
    Kafka 'orders' topic    ───▶    Event::Pipe              ───▶    Simplx cross-core
    session mgmt            ───▶    submitNewOrder()          ───▶    FIX 5.0 SP2 acceptor
 
- matcher.py                ───▶  OrderBookActor             ───▶  LogicalCoreActor
-   match_order()           ───▶    OrderBook::newOrder()     ───▶    RecoveryCause→IACA→Book
-   handle_cancel()         ───▶    OrderBook::cancelOrder()  ───▶    CancelOrderData
-   handle_amend()          ───▶    OrderBook::modifyOrder()  ───▶    ModifyOrderData
+ matcher.py                ───▶  MECoreActor                ───▶  LogicalCoreActor
+   match_order()           ───▶    Book::newOrder()          ───▶    RecoveryCause→IACA→Book
+   handle_cancel()         ───▶    Book::cancelOrder()       ───▶    CancelOrderData
+   handle_amend()          ───▶    Book::modifyOrder()       ───▶    ModifyOrderData
    Kafka 'trades' topic    ───▶    TradeEvent via Pipe       ───▶    IACA fragment chain
 
- dashboard.py (SSE)        ───▶  MarketDataActor            ───▶  MDLimitLogicalCoreHandler
+ dashboard.py (SSE)        ───▶  MDGActor                   ───▶  MDLimitLogicalCoreHandler
    /orderbook/<sym>        ───▶    BookUpdateEvent           ───▶    PublishLimitUpdateRequest
    /trades                 ───▶    TradeEvent list           ───▶    IA→SBE multicast
 
@@ -170,16 +170,16 @@
 ## Data Flow Summary
 
 ```
- 1. Client ──FIX/SBE──▶ OEGatewayActor ──Event::Pipe──▶ OrderBookActor
+ 1. Client ──FIX/SBE──▶ OEGActor ──Event::Pipe──▶ MECoreActor
                               ▲                              │
                               │                              ├─ RecoveryProxy.cause() → FragmentStore
-                              │                              ├─ OrderBook.match()
+                              │                              ├─ Book.match()
                               │                              ├─ IACA fragments → IacaAggregator
                               │                              │
                  ExecReport ◀─┘                              ├─ effect() [Master only]:
-                                                             │    ├─ ExecReport → OEGateway → Client
-                                                             │    ├─ TradeEvent → MarketDataActor
-                                                             │    └─ BookUpdate → MarketDataActor
+                                                             │    ├─ ExecReport → OEG → Client
+                                                             │    ├─ TradeEvent → MDGActor
+                                                             │    └─ BookUpdate → MDGActor
                                                              │
                                                              └─ IacaAggregator
                                                                   └─ complete chain → IA message
@@ -203,7 +203,7 @@ and `[FUTURE]` markers where implementation is needed.
              ▼              ▼                      ▼                   ▼
  ┌───────────────┐  ┌──────────────┐    ┌──────────────────┐  ┌────────────────┐
  │  OEG.n.BOTH   │  │  TCS.IN/OUT  │    │  SATURN Web/API  │  │  EMS / DAS     │
- │  (OEGateway   │  │  [FUTURE]    │    │  [FUTURE]        │  │  [FUTURE]      │
+ │  (OEG   │  │  [FUTURE]    │    │  [FUTURE]        │  │  [FUTURE]      │
  │   Actor) ✓    │  │  Trade       │    │  External trade  │  │  Execution     │
  │               │  │  Capture     │    │  declarations    │  │  Mgmt System   │
  └───────┬───────┘  │  Service     │    └────────┬─────────┘  └────────────────┘
@@ -213,11 +213,11 @@ and `[FUTURE]` markers where implementation is needed.
  ┌────────────────────────────────────────────────────────────────────────────────────────┐
  │  ME / Trading Chain                                                                    │
  │ ┌────────────────────────────────────────────────────────────────────────────────────┐  │
- │ │  Book / LogCore#n  (OrderBookActor) ✓                                              │  │
+ │ │  Book / LogCore#n  (MECoreActor) ✓                                              │  │
  │ │                                                                                    │  │
  │ │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐                    │  │
  │ │  │ Recovery Cause  │  │ Matching Engine │  │ IACA Inside     │                    │  │
- │ │  │ (RecoveryProxy  │  │ (OrderBook) ✓   │  │ (IacaAggregator │                    │  │
+ │ │  │ (RecoveryProxy  │  │ (Book) ✓   │  │ (IacaAggregator │                    │  │
  │ │  │  → Kafka) ✓     │  │                 │  │  partial) ✓     │                    │  │
  │ │  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘                    │  │
  │ │           │                    │                     │                              │  │
@@ -438,7 +438,7 @@ From the Optiq Architecture presentation.
  │    • Inherits trading group attributes                              │
  │    • Can override: APF (Authorized Price Fluctuation)               │
  │                                                                     │
- │  EuNEx currently: OrderBookActor per symbol, single "partition"    │
+ │  EuNEx currently: MECoreActor per symbol, single "partition"    │
  │  [FUTURE] PartitionManager distributes symbols across nodes         │
  └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -585,8 +585,8 @@ From Trading Manual Section 5.
 
 ```
  Phase 1 (Current) ✓ DONE
- ├── OrderBook with price-time priority matching
- ├── OEGatewayActor → OrderBookActor → MarketDataActor pipeline
+ ├── Book with price-time priority matching
+ ├── OEGActor → MECoreActor → MDGActor pipeline
  ├── Recovery Cause/Effect with Master/Mirror gating
  ├── IACA fragment chains with completion detection
  └── Simplx shim for single-threaded testing

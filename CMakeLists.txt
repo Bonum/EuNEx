@@ -50,12 +50,12 @@ include_directories(${CMAKE_SOURCE_DIR}/src)
 
 # ── Core library ────────────────────────────────────────────────────
 set(EUNEX_CORE_SOURCES
-    src/common/OrderBook.cpp
-    src/actors/OrderBookActor.cpp
-    src/actors/OEGatewayActor.cpp
-    src/actors/MarketDataActor.cpp
+    src/common/Book.cpp
+    src/actors/MECoreActor.cpp
+    src/actors/OEGActor.cpp
+    src/actors/MDGActor.cpp
     src/actors/ClearingHouseActor.cpp
-    src/actors/FIXGatewayActor.cpp
+    src/actors/FIXAcceptorActor.cpp
     src/actors/AITraderActor.cpp
     src/recovery/RecoveryProxy.cpp
     src/iaca/IacaAggregator.cpp

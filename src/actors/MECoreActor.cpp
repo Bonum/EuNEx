@@ -1,9 +1,9 @@
-#include "actors/OrderBookActor.hpp"
+#include "actors/MECoreActor.hpp"
 #include <iostream>
 
 namespace eunex {
 
-OrderBookActor::OrderBookActor(SymbolIndex_t symbolIdx,
+MECoreActor::MECoreActor(SymbolIndex_t symbolIdx,
                                const tredzone::ActorId& oeGatewayId,
                                const tredzone::ActorId& marketDataId,
                                const tredzone::ActorId& clearingHouseId)
@@ -23,7 +23,7 @@ OrderBookActor::OrderBookActor(SymbolIndex_t symbolIdx,
 // StockEx: match_order(order, producer)
 // Optiq:   RecoveryCause.onInput → CauseOperator → forwardToBook()
 
-void OrderBookActor::onEvent(const NewOrderEvent& event) {
+void MECoreActor::onEvent(const NewOrderEvent& event) {
     Order order{};
     order.clOrdId    = event.clOrdId;
     order.symbolIdx  = event.symbolIdx;
@@ -57,7 +57,7 @@ void OrderBookActor::onEvent(const NewOrderEvent& event) {
 // ── Cancel ─────────────────────────────────────────────────────────
 // StockEx: handle_cancel(msg, producer)
 
-void OrderBookActor::onEvent(const CancelOrderEvent& event) {
+void MECoreActor::onEvent(const CancelOrderEvent& event) {
     ExecutionReport rpt{};
     if (book_.cancelOrder(event.orderId, rpt)) {
         oePipe_.push<ExecReportEvent>(rpt, event.sessionId);
@@ -72,7 +72,7 @@ void OrderBookActor::onEvent(const CancelOrderEvent& event) {
 // ── Modify (Cancel-Replace) ────────────────────────────────────────
 // StockEx: handle_amend(msg, producer)
 
-void OrderBookActor::onEvent(const ModifyOrderEvent& event) {
+void MECoreActor::onEvent(const ModifyOrderEvent& event) {
     ExecutionReport rpt{};
     if (book_.modifyOrder(event.orderId, event.newPrice, event.newQuantity, rpt)) {
         oePipe_.push<ExecReportEvent>(rpt, event.sessionId);
@@ -88,7 +88,7 @@ void OrderBookActor::onEvent(const ModifyOrderEvent& event) {
 // StockEx: the Dashboard reads orderbook via REST GET /orderbook/<symbol>
 // Optiq:   publishLimitEffect → push to MDLimitLogicalCoreHandler
 
-void OrderBookActor::publishBookUpdate() {
+void MECoreActor::publishBookUpdate() {
     BookUpdateEvent update;
     update.symbolIdx = book_.symbolIndex();
 

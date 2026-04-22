@@ -16,12 +16,12 @@ using ExecCallback  = std::function<void(const ExecutionReport&)>;
 // Mirrors StockEx matcher.py logic but uses sorted std::map for O(log N)
 // insert/match instead of Python list.sort() on every match.
 //
-// In Optiq, each OrderBookActor owns exactly one OrderBook instance.
+// In Optiq, each BookActor owns exactly one Book instance.
 // The actor guarantees single-threaded access — no locks needed.
 //
-class OrderBook {
+class Book {
 public:
-    explicit OrderBook(SymbolIndex_t symbolIdx);
+    explicit Book(SymbolIndex_t symbolIdx);
 
     // Insert a new order and attempt matching. Returns executions via callbacks.
     void newOrder(Order& order, const TradeCallback& onTrade, const ExecCallback& onExec);

@@ -1,4 +1,4 @@
-#include "actors/FIXGatewayActor.hpp"
+#include "actors/FIXAcceptorActor.hpp"
 #include <iostream>
 #include <sstream>
 #include <cstring>
@@ -9,7 +9,7 @@
 
 namespace eunex {
 
-FIXGatewayActor::FIXGatewayActor(const tredzone::ActorId& oeGatewayId, uint16_t port)
+FIXAcceptorActor::FIXAcceptorActor(const tredzone::ActorId& oeGatewayId, uint16_t port)
     : oePipe_(*this, oeGatewayId)
     , port_(port)
 {
@@ -22,7 +22,7 @@ FIXGatewayActor::FIXGatewayActor(const tredzone::ActorId& oeGatewayId, uint16_t 
 
     listenSock_ = socket(AF_INET, SOCK_STREAM, 0);
     if (listenSock_ == INVALID_SOCK) {
-        std::cerr << "FIXGateway: socket() failed\n";
+        std::cerr << "FIXAcceptor: socket() failed\n";
         return;
     }
 
@@ -34,30 +34,30 @@ FIXGatewayActor::FIXGatewayActor(const tredzone::ActorId& oeGatewayId, uint16_t 
     addr.sin_port = htons(port_);
 
     if (bind(listenSock_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
-        std::cerr << "FIXGateway: bind() failed on port " << port_ << "\n";
+        std::cerr << "FIXAcceptor: bind() failed on port " << port_ << "\n";
         closeSocket(listenSock_);
         listenSock_ = INVALID_SOCK;
         return;
     }
 
     if (listen(listenSock_, 5) != 0) {
-        std::cerr << "FIXGateway: listen() failed\n";
+        std::cerr << "FIXAcceptor: listen() failed\n";
         closeSocket(listenSock_);
         listenSock_ = INVALID_SOCK;
         return;
     }
 
     running_ = true;
-    acceptThread_ = std::thread(&FIXGatewayActor::acceptLoop, this);
+    acceptThread_ = std::thread(&FIXAcceptorActor::acceptLoop, this);
 
-    std::cout << "FIXGateway: listening on port " << port_ << "\n";
+    std::cout << "FIXAcceptor: listening on port " << port_ << "\n";
 }
 
-FIXGatewayActor::~FIXGatewayActor() {
+FIXAcceptorActor::~FIXAcceptorActor() {
     stop();
 }
 
-void FIXGatewayActor::stop() {
+void FIXAcceptorActor::stop() {
     if (!running_.exchange(false)) return;
 
     if (listenSock_ != INVALID_SOCK) {
@@ -83,14 +83,14 @@ void FIXGatewayActor::stop() {
     sessions_.clear();
 }
 
-int FIXGatewayActor::clientCount() const {
+int FIXAcceptorActor::clientCount() const {
     std::lock_guard<std::mutex> lock(sessionMutex_);
     return static_cast<int>(sessions_.size());
 }
 
 // ── Accept loop (background thread) ──────────────────────────────
 
-void FIXGatewayActor::acceptLoop() {
+void FIXAcceptorActor::acceptLoop() {
     while (running_) {
         sockaddr_in clientAddr{};
         socklen_t len = sizeof(clientAddr);
@@ -98,7 +98,7 @@ void FIXGatewayActor::acceptLoop() {
                                       reinterpret_cast<sockaddr*>(&clientAddr), &len);
 
         if (clientSock == INVALID_SOCK) {
-            if (running_) std::cerr << "FIXGateway: accept() failed\n";
+            if (running_) std::cerr << "FIXAcceptor: accept() failed\n";
             continue;
         }
 
@@ -112,16 +112,16 @@ void FIXGatewayActor::acceptLoop() {
         sess->loggedOn = false;
 
         FIXSession* raw = sess.get();
-        sess->recvThread = std::thread(&FIXGatewayActor::clientRecvLoop, this, sessId);
+        sess->recvThread = std::thread(&FIXAcceptorActor::clientRecvLoop, this, sessId);
 
         sessions_[sessId] = std::move(sess);
-        std::cout << "FIXGateway: client connected (session " << sessId << ")\n";
+        std::cout << "FIXAcceptor: client connected (session " << sessId << ")\n";
     }
 }
 
 // ── Client recv loop (per-client thread) ─────────────────────────
 
-void FIXGatewayActor::clientRecvLoop(SessionId_t sessionId) {
+void FIXAcceptorActor::clientRecvLoop(SessionId_t sessionId) {
     socket_t sock;
     {
         std::lock_guard<std::mutex> lock(sessionMutex_);
@@ -177,7 +177,7 @@ void FIXGatewayActor::clientRecvLoop(SessionId_t sessionId) {
 
 // ── FIX message parsing ──────────────────────────────────────────
 
-std::vector<FIXGatewayActor::TagMap> FIXGatewayActor::parseFIXMessages(const std::string& data) {
+std::vector<FIXAcceptorActor::TagMap> FIXAcceptorActor::parseFIXMessages(const std::string& data) {
     std::vector<TagMap> result;
     std::string remaining = data;
 
@@ -213,17 +213,17 @@ std::vector<FIXGatewayActor::TagMap> FIXGatewayActor::parseFIXMessages(const std
     return result;
 }
 
-std::string FIXGatewayActor::getTag(const TagMap& msg, int tag, const std::string& def) {
+std::string FIXAcceptorActor::getTag(const TagMap& msg, int tag, const std::string& def) {
     auto it = msg.find(tag);
     return (it != msg.end()) ? it->second : def;
 }
 
 // ── FIX message handlers ─────────────────────────────────────────
 
-void FIXGatewayActor::handleLogon(FIXSession& sess, const TagMap& msg) {
+void FIXAcceptorActor::handleLogon(FIXSession& sess, const TagMap& msg) {
     sess.senderCompId = getTag(msg, 49, "UNKNOWN");
     sess.loggedOn = true;
-    std::cout << "FIXGateway: Logon from " << sess.senderCompId
+    std::cout << "FIXAcceptor: Logon from " << sess.senderCompId
               << " (session " << sess.sessionId << ")\n";
 
     sendFIX(sess, "A", {
@@ -232,7 +232,7 @@ void FIXGatewayActor::handleLogon(FIXSession& sess, const TagMap& msg) {
     });
 }
 
-void FIXGatewayActor::handleNewOrderSingle(FIXSession& sess, const TagMap& msg) {
+void FIXAcceptorActor::handleNewOrderSingle(FIXSession& sess, const TagMap& msg) {
     std::string clOrdIdStr = getTag(msg, 11);
     std::string symbol = getTag(msg, 55);
     std::string sideStr = getTag(msg, 54);
@@ -256,7 +256,7 @@ void FIXGatewayActor::handleNewOrderSingle(FIXSession& sess, const TagMap& msg) 
     oePipe_.push<NewOrderEvent>(clOrdId, symIdx, side, ordType, tif, price, qty, sess.sessionId);
 }
 
-void FIXGatewayActor::handleCancelRequest(FIXSession& sess, const TagMap& msg) {
+void FIXAcceptorActor::handleCancelRequest(FIXSession& sess, const TagMap& msg) {
     std::string origClOrdIdStr = getTag(msg, 41);
     std::string orderIdStr = getTag(msg, 37, "0");
     std::string symbol = getTag(msg, 55);
@@ -268,7 +268,7 @@ void FIXGatewayActor::handleCancelRequest(FIXSession& sess, const TagMap& msg) {
     oePipe_.push<CancelOrderEvent>(orderId, origClOrdId, symIdx, sess.sessionId);
 }
 
-void FIXGatewayActor::handleCancelReplaceRequest(FIXSession& sess, const TagMap& msg) {
+void FIXAcceptorActor::handleCancelReplaceRequest(FIXSession& sess, const TagMap& msg) {
     std::string orderIdStr = getTag(msg, 37, "0");
     std::string origClOrdIdStr = getTag(msg, 41);
     std::string symbol = getTag(msg, 55);
@@ -286,7 +286,7 @@ void FIXGatewayActor::handleCancelReplaceRequest(FIXSession& sess, const TagMap&
 
 // ── Send FIX message ─────────────────────────────────────────────
 
-void FIXGatewayActor::sendFIX(FIXSession& sess, const std::string& msgType,
+void FIXAcceptorActor::sendFIX(FIXSession& sess, const std::string& msgType,
                                const std::vector<std::pair<int, std::string>>& fields) {
     std::ostringstream body;
     body << "35=" << msgType << '\x01';
@@ -333,11 +333,11 @@ void FIXGatewayActor::sendFIX(FIXSession& sess, const std::string& msgType,
 
 // ── Exec report handling ─────────────────────────────────────────
 
-void FIXGatewayActor::onEvent(const ExecReportEvent& event) {
+void FIXAcceptorActor::onEvent(const ExecReportEvent& event) {
     sendExecReport(event.sessionId, event);
 }
 
-void FIXGatewayActor::sendExecReport(SessionId_t sessionId, const ExecReportEvent& rpt) {
+void FIXAcceptorActor::sendExecReport(SessionId_t sessionId, const ExecReportEvent& rpt) {
     std::lock_guard<std::mutex> lock(sessionMutex_);
     auto it = sessions_.find(sessionId);
     if (it == sessions_.end()) return;
@@ -386,7 +386,7 @@ void FIXGatewayActor::sendExecReport(SessionId_t sessionId, const ExecReportEven
 
 // ── Symbol mapping ───────────────────────────────────────────────
 
-SymbolIndex_t FIXGatewayActor::symbolFromString(const std::string& sym) {
+SymbolIndex_t FIXAcceptorActor::symbolFromString(const std::string& sym) {
     if (sym == "AAPL")   return 1;
     if (sym == "MSFT")   return 2;
     if (sym == "GOOGL")  return 3;
@@ -394,7 +394,7 @@ SymbolIndex_t FIXGatewayActor::symbolFromString(const std::string& sym) {
     return static_cast<SymbolIndex_t>(std::strtoul(sym.c_str(), nullptr, 10));
 }
 
-std::string FIXGatewayActor::symbolToString(SymbolIndex_t idx) {
+std::string FIXAcceptorActor::symbolToString(SymbolIndex_t idx) {
     switch (idx) {
         case 1: return "AAPL";
         case 2: return "MSFT";

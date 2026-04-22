@@ -1,13 +1,13 @@
-#include "actors/MarketDataActor.hpp"
+#include "actors/MDGActor.hpp"
 
 namespace eunex {
 
-MarketDataActor::MarketDataActor() {
+MDGActor::MDGActor() {
     registerEventHandler<TradeEvent>(*this);
     registerEventHandler<BookUpdateEvent>(*this);
 }
 
-void MarketDataActor::onEvent(const TradeEvent& event) {
+void MDGActor::onEvent(const TradeEvent& event) {
     const auto& t = event.trade;
     auto& snap = snapshots_[t.symbolIdx];
     snap.symbolIdx      = t.symbolIdx;
@@ -22,7 +22,7 @@ void MarketDataActor::onEvent(const TradeEvent& event) {
     }
 }
 
-void MarketDataActor::onEvent(const BookUpdateEvent& event) {
+void MDGActor::onEvent(const BookUpdateEvent& event) {
     auto& snap = snapshots_[event.symbolIdx];
     snap.symbolIdx = event.symbolIdx;
     snap.updateTime = nowNs();
@@ -42,7 +42,7 @@ void MarketDataActor::onEvent(const BookUpdateEvent& event) {
     }
 }
 
-const MarketDataSnapshot* MarketDataActor::getSnapshot(SymbolIndex_t sym) const {
+const MarketDataSnapshot* MDGActor::getSnapshot(SymbolIndex_t sym) const {
     auto it = snapshots_.find(sym);
     return it != snapshots_.end() ? &it->second : nullptr;
 }

@@ -1,6 +1,6 @@
 #pragma once
 // ════════════════════════════════════════════════════════════════════
-// MarketDataActor — Market Data Publisher
+// MDGActor — Market Data Publisher
 //
 // StockEx equivalent: dashboard.py SSE streaming + mdf_simulator.py
 //   - Receives trades/snapshots, streams to UI
@@ -30,11 +30,11 @@ struct MarketDataSnapshot {
     Timestamp_ns  updateTime;
 };
 
-class MarketDataActor : public tredzone::Actor {
+class MDGActor : public tredzone::Actor {
 public:
     struct Service : tredzone::AsyncService {};
 
-    MarketDataActor();
+    MDGActor();
 
     void onEvent(const TradeEvent& event);
     void onEvent(const BookUpdateEvent& event);
