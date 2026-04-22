@@ -1,4 +1,4 @@
-// ════════════════════════════════════════════════════════════════════
+// ====================================================================
 // EuNEx Matching Engine — Main Entry Point
 //
 // Multi-threaded actor topology (mirrors Optiq architecture):
@@ -12,7 +12,7 @@
 //   OEActor → LogicalCoreActor (Book) → MDLimit → MDIMP
 //                                     → OE Ack (back to OEActor)
 //                                     → ClearingHouse (via Kafka/PTB)
-// ════════════════════════════════════════════════════════════════════
+// ====================================================================
 
 #include "engine/SimplxShim.hpp"
 #include "actors/MECoreActor.hpp"
@@ -35,15 +35,15 @@ static std::atomic<bool> g_running{true};
 void signalHandler(int) { g_running = false; }
 
 int main() {
-    std::cout << "═══════════════════════════════════════════\n";
-    std::cout << "  EuNEx Matching Engine v0.4\n";
+    std::cout << "===========================================\n";
+    std::cout << "  EuNEx Matching Engine v0.5\n";
     std::cout << "  C++ Actor Architecture (Optiq model)\n";
-    std::cout << "═══════════════════════════════════════════\n\n";
+    std::cout << "===========================================\n\n";
 
     std::signal(SIGINT, signalHandler);
     std::signal(SIGTERM, signalHandler);
 
-    // ── Symbol definitions ────────────────────────────────────────
+    // --Symbol definitions ----------------------------------------
     constexpr SymbolIndex_t SYM_AAPL  = 1;
     constexpr SymbolIndex_t SYM_MSFT  = 2;
     constexpr SymbolIndex_t SYM_GOOGL = 3;
@@ -51,13 +51,13 @@ int main() {
 
     std::vector<SymbolIndex_t> allSymbols = {SYM_AAPL, SYM_MSFT, SYM_GOOGL, SYM_EURO50};
 
-    // ── Core 0: OE Gateway ────────────────────────────────────────
+    // --Core 0: OE Gateway ----------------------------------------
     auto oeGateway = std::make_unique<OEGActor>();
 
-    // ── Core 2: Market Data ───────────────────────────────────────
+    // --Core 2: Market Data ---------------------------------------
     auto mdActor = std::make_unique<MDGActor>();
 
-    // ── Core 3: Clearing House ────────────────────────────────────
+    // --Core 3: Clearing House ------------------------------------
     auto chActor = std::make_unique<ClearingHouseActor>();
 
     // Map AI trader sessions to clearing house members
@@ -71,7 +71,7 @@ int main() {
                             static_cast<MemberId_t>(i + 1));
     }
 
-    // ── Core 1: Order Books (per symbol) ──────────────────────────
+    // --Core 1: Order Books (per symbol) --------------------------
     auto bookAAPL = std::make_unique<MECoreActor>(
         SYM_AAPL, oeGateway->getActorId(), mdActor->getActorId(), chActor->getActorId());
     auto bookMSFT = std::make_unique<MECoreActor>(
@@ -86,17 +86,17 @@ int main() {
     oeGateway->mapSymbol(SYM_GOOGL, bookGOOGL->getActorId());
     oeGateway->mapSymbol(SYM_EURO50, bookEURO50->getActorId());
 
-    // ── Core 0: FIX Gateway ──────────────────────────────────────
+    // --Core 0: FIX Gateway --------------------------------------
     auto fixGateway = std::make_unique<FIXAcceptorActor>(oeGateway->getActorId(), 9001);
 
-    // ── Core 3: AI Trader ─────────────────────────────────────────
+    // --Core 3: AI Trader -----------------------------------------
     auto aiTrader = std::make_unique<AITraderActor>(oeGateway->getActorId(), allSymbols);
 
-    // ── Wire exec report subscribers ──────────────────────────────
+    // --Wire exec report subscribers ------------------------------
     oeGateway->addExecReportSubscriber(fixGateway->getActorId());
     oeGateway->addExecReportSubscriber(aiTrader->getActorId());
 
-    // ── Print topology ────────────────────────────────────────────
+    // --Print topology --------------------------------------------
     std::cout << "Actor topology:\n";
     std::cout << "  Core 0: OEG (id=" << oeGateway->getActorId().id
               << "), FIXAcceptor (id=" << fixGateway->getActorId().id << ")\n";
@@ -113,7 +113,7 @@ int main() {
     std::cout << "  AI Traders:   10 members (MBR01-MBR10)\n";
     std::cout << "  Symbols:      AAPL, MSFT, GOOGL, EURO50\n\n";
 
-    // ── Seed initial orders for AI to have market data ────────────
+    // --Seed initial orders for AI to have market data ------------
     std::cout << "Seeding initial order book...\n";
     SessionId_t seedSession = 200;
 
@@ -138,7 +138,7 @@ int main() {
 
     std::cout << "Initial orders seeded.\n\n";
 
-    // ── Run AI trading rounds ─────────────────────────────────────
+    // --Run AI trading rounds -------------------------------------
     std::cout << "Running AI trading... (Ctrl+C to stop)\n";
     std::cout << "FIX clients can connect to localhost:9001\n\n";
 
@@ -148,7 +148,7 @@ int main() {
         round++;
 
         if (round % 10 == 0) {
-            std::cout << "── Round " << round << " ──\n";
+            std::cout << "--Round " << round << " --\n";
 
             auto leaderboard = chActor->getLeaderboard();
             std::cout << "  Leaderboard:\n";
@@ -185,11 +185,11 @@ int main() {
         std::this_thread::sleep_for(std::chrono::seconds(3));
     }
 
-    // ── Shutdown ──────────────────────────────────────────────────
+    // --Shutdown --------------------------------------------------
     std::cout << "\nShutting down...\n";
     fixGateway->stop();
 
-    std::cout << "\n── Final Market Data ─────────────────────\n";
+    std::cout << "\n--Final Market Data ---------------------\n";
     for (auto sym : allSymbols) {
         auto* snap = mdActor->getSnapshot(sym);
         if (snap) {
@@ -199,7 +199,7 @@ int main() {
         }
     }
 
-    std::cout << "\n── Final Leaderboard ─────────────────────\n";
+    std::cout << "\n--Final Leaderboard ---------------------\n";
     auto lb = chActor->getLeaderboard();
     for (auto& e : lb) {
         std::cout << "  " << e.name
@@ -210,7 +210,7 @@ int main() {
     }
 
     std::cout << "\nTrades processed: " << mdActor->getRecentTrades().size() << "\n";
-    std::cout << "═══════════════════════════════════════════\n";
+    std::cout << "===========================================\n";
     std::cout << "  Engine stopped.\n";
     return 0;
 }
