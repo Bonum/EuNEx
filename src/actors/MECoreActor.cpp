@@ -33,23 +33,22 @@ void MECoreActor::onEvent(const NewOrderEvent& event) {
     order.price      = event.price;
     order.quantity   = event.quantity;
     order.sessionId  = event.sessionId;
+    order.stopPrice  = event.stopPrice;
 
-    // In Optiq this would be wrapped in:
-    //   RecoveryProxy::Cause → persist to Kafka
-    //   IACA Cause → emit BOOK fragment to IacaAggregator
-    //   Effect → send ack to OE
-    //   Effect → publish limit update to MDLimit
+    auto onTrade = [this](const Trade& trade) {
+        mdPipe_.push<TradeEvent>(trade);
+        if (chPipe_) chPipe_->push<TradeEvent>(trade);
+    };
+    auto onExec = [this, &event](const ExecutionReport& rpt) {
+        oePipe_.push<ExecReportEvent>(rpt, event.sessionId);
+    };
 
-    book_.newOrder(order,
-        [this](const Trade& trade) {
-            mdPipe_.push<TradeEvent>(trade);
-            if (chPipe_) chPipe_->push<TradeEvent>(trade);
-        },
-        // Execution report — send back to OE Gateway
-        [this, &event](const ExecutionReport& rpt) {
-            oePipe_.push<ExecReportEvent>(rpt, event.sessionId);
-        }
-    );
+    book_.newOrder(order, onTrade, onExec);
+
+    // Trigger any stop orders whose stopPrice has been crossed
+    if (book_.stopOrderCount() > 0 && book_.lastTradePrice() != 0) {
+        book_.triggerStopOrders(book_.lastTradePrice(), onTrade, onExec);
+    }
 
     publishBookUpdate();
 }

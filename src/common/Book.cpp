@@ -1,10 +1,151 @@
 #include "common/Book.hpp"
 #include <algorithm>
+#include <cmath>
 
 namespace eunex {
 
 Book::Book(SymbolIndex_t symbolIdx)
     : symbolIdx_(symbolIdx) {}
+
+// ── Phase management ──────────────────────────────────────────────
+
+void Book::setPhase(TradingPhase phase) {
+    phase_ = phase;
+}
+
+// ── IOP: Indicative Opening Price ─────────────────────────────────
+// Find the price that maximizes executable volume.
+// Tiebreakers: minimum surplus, then higher price if buy surplus.
+
+Price_t Book::getIOP() const {
+    if (bids_.empty() || asks_.empty()) return 0;
+
+    // Collect all candidate prices from both sides
+    std::vector<Price_t> prices;
+    for (auto& [p, _] : bids_) prices.push_back(p);
+    for (auto& [p, _] : asks_) prices.push_back(p);
+    std::sort(prices.begin(), prices.end());
+    prices.erase(std::unique(prices.begin(), prices.end()), prices.end());
+
+    Price_t bestPrice = 0;
+    Quantity_t bestVolume = 0;
+    Quantity_t bestSurplus = UINT64_MAX;
+    bool bestBuySurplus = false;
+
+    for (Price_t p : prices) {
+        // Cumulative buy qty at price >= p
+        Quantity_t cumBuy = 0;
+        for (auto& [bidPrice, orders] : bids_) {
+            if (bidPrice >= p) {
+                for (auto& o : orders) cumBuy += o.remainingQty;
+            }
+        }
+        // Cumulative sell qty at price <= p
+        Quantity_t cumSell = 0;
+        for (auto& [askPrice, orders] : asks_) {
+            if (askPrice <= p) {
+                for (auto& o : orders) cumSell += o.remainingQty;
+            }
+        }
+
+        Quantity_t volume = std::min(cumBuy, cumSell);
+        Quantity_t surplus = (cumBuy > cumSell) ? (cumBuy - cumSell) : (cumSell - cumBuy);
+        bool buySurplus = cumBuy > cumSell;
+
+        if (volume > bestVolume ||
+            (volume == bestVolume && surplus < bestSurplus) ||
+            (volume == bestVolume && surplus == bestSurplus && buySurplus && p > bestPrice)) {
+            bestPrice = p;
+            bestVolume = volume;
+            bestSurplus = surplus;
+            bestBuySurplus = buySurplus;
+        }
+    }
+
+    return bestVolume > 0 ? bestPrice : 0;
+}
+
+// ── Uncrossing: execute accumulated orders at IOP ─────────────────
+
+void Book::uncross(const TradeCallback& onTrade, const ExecCallback& onExec) {
+    Price_t iop = getIOP();
+    if (iop == 0) return;
+
+    Quantity_t remainingVolume = UINT64_MAX;
+
+    // Match bids >= IOP against asks <= IOP at the IOP price
+    // Process asks in price-time order
+    auto askIt = asks_.begin();
+    while (askIt != asks_.end() && askIt->first <= iop && remainingVolume > 0) {
+        auto& level = askIt->second;
+        auto orderIt = level.begin();
+        while (orderIt != level.end() && remainingVolume > 0) {
+            // Find a matching bid
+            auto bidIt = bids_.begin();
+            while (bidIt != bids_.end() && bidIt->first >= iop && orderIt->remainingQty > 0) {
+                auto& bidLevel = bidIt->second;
+                auto bidOrderIt = bidLevel.begin();
+                while (bidOrderIt != bidLevel.end() && orderIt->remainingQty > 0) {
+                    Quantity_t traded = std::min(orderIt->remainingQty, bidOrderIt->remainingQty);
+
+                    Trade trade{};
+                    trade.tradeId       = allocateTradeId();
+                    trade.symbolIdx     = symbolIdx_;
+                    trade.price         = iop;
+                    trade.quantity      = traded;
+                    trade.buyOrderId    = bidOrderIt->orderId;
+                    trade.sellOrderId   = orderIt->orderId;
+                    trade.buyClOrdId    = bidOrderIt->clOrdId;
+                    trade.sellClOrdId   = orderIt->clOrdId;
+                    trade.buySessionId  = bidOrderIt->sessionId;
+                    trade.sellSessionId = orderIt->sessionId;
+                    trade.matchTime     = nowNs();
+                    onTrade(trade);
+                    lastTradePrice_ = iop;
+
+                    orderIt->remainingQty -= traded;
+                    bidOrderIt->remainingQty -= traded;
+
+                    ExecutionReport bidRpt{bidOrderIt->orderId, bidOrderIt->clOrdId,
+                        bidOrderIt->remainingQty == 0 ? OrderStatus::Filled : OrderStatus::PartiallyFilled,
+                        bidOrderIt->quantity - bidOrderIt->remainingQty,
+                        bidOrderIt->remainingQty, iop, traded, trade.tradeId};
+                    onExec(bidRpt);
+
+                    ExecutionReport askRpt{orderIt->orderId, orderIt->clOrdId,
+                        orderIt->remainingQty == 0 ? OrderStatus::Filled : OrderStatus::PartiallyFilled,
+                        orderIt->quantity - orderIt->remainingQty,
+                        orderIt->remainingQty, iop, traded, trade.tradeId};
+                    onExec(askRpt);
+
+                    if (bidOrderIt->remainingQty == 0) {
+                        orderIndex_.erase(bidOrderIt->orderId);
+                        bidOrderIt = bidLevel.erase(bidOrderIt);
+                    } else {
+                        ++bidOrderIt;
+                    }
+                }
+                if (bidLevel.empty()) {
+                    bidIt = bids_.erase(bidIt);
+                } else {
+                    ++bidIt;
+                }
+            }
+
+            if (orderIt->remainingQty == 0) {
+                orderIndex_.erase(orderIt->orderId);
+                orderIt = level.erase(orderIt);
+            } else {
+                ++orderIt;
+            }
+        }
+        if (level.empty()) {
+            askIt = asks_.erase(askIt);
+        } else {
+            ++askIt;
+        }
+    }
+}
 
 // ── New Order Entry ────────────────────────────────────────────────
 
@@ -14,6 +155,33 @@ void Book::newOrder(Order& order, const TradeCallback& onTrade,
     order.remainingQty = order.quantity;
     order.status = OrderStatus::New;
     order.entryTime = nowNs();
+
+    // Stop orders: park without matching, wait for trigger
+    if (order.ordType == OrderType::StopMarket || order.ordType == OrderType::StopLimit) {
+        stopOrders_.push_back(order);
+        ExecutionReport rpt{order.orderId, order.clOrdId, OrderStatus::New,
+                            0, order.quantity, 0, 0, 0};
+        onExec(rpt);
+        return;
+    }
+
+    // PreOpen / Opening: accumulate orders on book without matching
+    if (phase_ == TradingPhase::PreOpen || phase_ == TradingPhase::Opening) {
+        insertResting(order);
+        ExecutionReport rpt{order.orderId, order.clOrdId, OrderStatus::New,
+                            0, order.quantity, 0, 0, 0};
+        onExec(rpt);
+        return;
+    }
+
+    // Closed: reject all orders
+    if (phase_ == TradingPhase::Closed) {
+        order.status = OrderStatus::Rejected;
+        ExecutionReport rpt{order.orderId, order.clOrdId, OrderStatus::Rejected,
+                            0, order.quantity, 0, 0, 0};
+        onExec(rpt);
+        return;
+    }
 
     // FOK: check if full fill is possible before matching
     if (order.tif == TimeInForce::FOK) {
@@ -74,6 +242,67 @@ void Book::newOrder(Order& order, const TradeCallback& onTrade,
     }
 }
 
+// ── Stop order trigger ────────────────────────────────────────────
+// Buy stop: triggered when tradePrice >= stopPrice (price rising)
+// Sell stop: triggered when tradePrice <= stopPrice (price falling)
+
+void Book::triggerStopOrders(Price_t tradePrice, const TradeCallback& onTrade,
+                              const ExecCallback& onExec) {
+    std::vector<Order> remaining;
+    std::vector<Order> triggered;
+
+    for (auto& stop : stopOrders_) {
+        bool trigger = false;
+        if (stop.side == Side::Buy && tradePrice >= stop.stopPrice)
+            trigger = true;
+        else if (stop.side == Side::Sell && tradePrice <= stop.stopPrice)
+            trigger = true;
+
+        if (trigger) {
+            triggered.push_back(stop);
+        } else {
+            remaining.push_back(stop);
+        }
+    }
+
+    stopOrders_ = std::move(remaining);
+
+    for (auto& stop : triggered) {
+        Order converted{};
+        converted.clOrdId   = stop.clOrdId;
+        converted.symbolIdx = stop.symbolIdx;
+        converted.side      = stop.side;
+        converted.tif       = stop.tif;
+        converted.quantity   = stop.remainingQty;
+        converted.sessionId  = stop.sessionId;
+        converted.stopPrice  = 0;
+
+        if (stop.ordType == OrderType::StopMarket) {
+            converted.ordType = OrderType::Market;
+            converted.price   = 0;
+        } else {
+            converted.ordType = OrderType::Limit;
+            converted.price   = stop.price;
+        }
+
+        newOrder(converted, onTrade, onExec);
+    }
+}
+
+// ── Cancel stop order ─────────────────────────────────────────────
+
+bool Book::cancelStopOrder(OrderId_t orderId, ExecutionReport& report) {
+    for (auto it = stopOrders_.begin(); it != stopOrders_.end(); ++it) {
+        if (it->orderId == orderId) {
+            report = {orderId, it->clOrdId, OrderStatus::Cancelled,
+                      0, 0, 0, 0, 0};
+            stopOrders_.erase(it);
+            return true;
+        }
+    }
+    return false;
+}
+
 // ── Matching: Buy against Asks ─────────────────────────────────────
 
 void Book::matchBuy(Order& incoming, const TradeCallback& onTrade,
@@ -104,11 +333,11 @@ void Book::matchBuy(Order& incoming, const TradeCallback& onTrade,
             trade.sellSessionId = orderIt->sessionId;
             trade.matchTime   = nowNs();
             onTrade(trade);
+            lastTradePrice_ = tradePrice;
 
             incoming.remainingQty -= traded;
             orderIt->remainingQty -= traded;
 
-            // Execution report for the resting sell
             ExecutionReport restingRpt{orderIt->orderId, orderIt->clOrdId,
                 orderIt->remainingQty == 0 ? OrderStatus::Filled : OrderStatus::PartiallyFilled,
                 orderIt->quantity - orderIt->remainingQty,
@@ -161,6 +390,7 @@ void Book::matchSell(Order& incoming, const TradeCallback& onTrade,
             trade.sellSessionId = incoming.sessionId;
             trade.matchTime   = nowNs();
             onTrade(trade);
+            lastTradePrice_ = tradePrice;
 
             incoming.remainingQty -= traded;
             orderIt->remainingQty -= traded;
@@ -190,6 +420,10 @@ void Book::matchSell(Order& incoming, const TradeCallback& onTrade,
 // ── Cancel ─────────────────────────────────────────────────────────
 
 bool Book::cancelOrder(OrderId_t orderId, ExecutionReport& report) {
+    // Check stop orders first
+    if (cancelStopOrder(orderId, report))
+        return true;
+
     auto it = orderIndex_.find(orderId);
     if (it == orderIndex_.end())
         return false;
@@ -250,6 +484,7 @@ bool Book::modifyOrder(OrderId_t orderId, Price_t newPrice, Quantity_t newQty,
     replacement.orderId    = allocateOrderId();
     replacement.entryTime  = nowNs();
     replacement.status     = OrderStatus::New;
+    replacement.stopPrice  = 0;
 
     insertResting(replacement);
     report = {replacement.orderId, replacement.clOrdId, OrderStatus::New,
@@ -290,6 +525,14 @@ void Book::removeOrder(OrderId_t orderId, Side side, Price_t price) {
 }
 
 // ── Query helpers ──────────────────────────────────────────────────
+
+Price_t Book::bestBid() const {
+    return bids_.empty() ? 0 : bids_.begin()->first;
+}
+
+Price_t Book::bestAsk() const {
+    return asks_.empty() ? 0 : asks_.begin()->first;
+}
 
 template<typename MapT>
 std::vector<Book::Level> Book::getLevels(const MapT& map, int depth) const {

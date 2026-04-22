@@ -38,8 +38,10 @@ enum class Side : uint8_t {
 };
 
 enum class OrderType : uint8_t {
-    Market = 1,
-    Limit  = 2
+    Market     = 1,
+    Limit      = 2,
+    StopMarket = 3,
+    StopLimit  = 4
 };
 
 enum class TimeInForce : uint8_t {
@@ -62,6 +64,14 @@ enum class MessageType : uint8_t {
     ModifyOrder = 2,
     CancelOrder = 3,
     MassCancel  = 4
+};
+
+// ── Trading phases ─────────────────────────────────────────────────
+enum class TradingPhase : uint8_t {
+    PreOpen    = 0,
+    Opening    = 1,
+    CTS        = 2,
+    Closed     = 3
 };
 
 // ── Timestamps ─────────────────────────────────────────────────────
@@ -90,6 +100,7 @@ struct Order {
     Timestamp_ns  entryTime;
     SessionId_t   sessionId;
     OrderStatus   status;
+    Price_t       stopPrice;
 };
 #pragma pack(pop)
 

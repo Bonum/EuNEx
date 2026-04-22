@@ -117,4 +117,8 @@ if(EUNEX_BUILD_TESTS)
     add_executable(test_ai_trader tests/test_ai_trader.cpp)
     target_link_libraries(test_ai_trader PRIVATE eunex_core)
     add_test(NAME AITraderTest COMMAND test_ai_trader)
+
+    add_executable(test_stop_orders tests/test_stop_orders.cpp)
+    target_link_libraries(test_stop_orders PRIVATE eunex_core)
+    add_test(NAME StopOrdersTest COMMAND test_stop_orders)
 endif()

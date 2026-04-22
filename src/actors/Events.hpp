@@ -27,12 +27,15 @@ struct NewOrderEvent : tredzone::Actor::Event {
     Price_t       price;
     Quantity_t    quantity;
     SessionId_t   sessionId;
+    Price_t       stopPrice;
 
-    NewOrderEvent() = default;
+    NewOrderEvent() : stopPrice(0) {}
     NewOrderEvent(ClOrdId_t cl, SymbolIndex_t sym, Side s, OrderType ot,
-                  TimeInForce t, Price_t px, Quantity_t qty, SessionId_t sess)
+                  TimeInForce t, Price_t px, Quantity_t qty, SessionId_t sess,
+                  Price_t stop = 0)
         : clOrdId(cl), symbolIdx(sym), side(s), ordType(ot),
-          tif(t), price(px), quantity(qty), sessionId(sess) {}
+          tif(t), price(px), quantity(qty), sessionId(sess),
+          stopPrice(stop) {}
 };
 
 // ── CancelOrder event ──────────────────────────────────────────────
