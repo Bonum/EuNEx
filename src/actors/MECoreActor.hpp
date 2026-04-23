@@ -1,24 +1,8 @@
 #pragma once
-// ════════════════════════════════════════════════════════════════════
-// MECoreActor — The matching engine core
-//
-// StockEx equivalent: matcher.py (match_order, handle_cancel, handle_amend)
-// Optiq equivalent:   LogicalCoreActor + RecoveryHelperCore + Book
-//
-// One actor per symbol (or group of symbols). Owns the OrderBook,
-// processes incoming orders, and emits trades + execution reports.
-//
-// In Optiq, this would be a LogicalCoreActor with:
-//   - RecoveryProxy::Cause for persisting each incoming event
-//   - IACA Cause/Effect chain for producing IA messages
-//   - Effects gated by Master/Mirror role
-//
-// Here we implement the core matching with simplified recovery hooks.
-// ════════════════════════════════════════════════════════════════════
-
 #include "engine/SimplxShim.hpp"
 #include "common/Book.hpp"
 #include "actors/Events.hpp"
+#include "persistence/KafkaBus.hpp"
 #include <optional>
 
 namespace eunex {
@@ -30,7 +14,8 @@ public:
     MECoreActor(SymbolIndex_t symbolIdx,
                    const tredzone::ActorId& oeGatewayId,
                    const tredzone::ActorId& marketDataId,
-                   const tredzone::ActorId& clearingHouseId = tredzone::ActorId{});
+                   const tredzone::ActorId& clearingHouseId = tredzone::ActorId{},
+                   KafkaBus* kafkaBus = nullptr);
 
     void onEvent(const NewOrderEvent& event);
     void onEvent(const CancelOrderEvent& event);
@@ -41,6 +26,7 @@ private:
     tredzone::Actor::Event::Pipe oePipe_;
     tredzone::Actor::Event::Pipe mdPipe_;
     std::optional<tredzone::Actor::Event::Pipe> chPipe_;
+    KafkaBus* kafka_ = nullptr;
 
     void publishBookUpdate();
 };

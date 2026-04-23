@@ -21,11 +21,13 @@
 #include "actors/ClearingHouseActor.hpp"
 #include "actors/FIXAcceptorActor.hpp"
 #include "actors/AITraderActor.hpp"
+#include "persistence/KafkaBus.hpp"
 #include <iostream>
 #include <thread>
 #include <chrono>
 #include <csignal>
 #include <atomic>
+#include <cstdlib>
 
 using namespace tredzone;
 using namespace eunex;
@@ -42,6 +44,15 @@ int main() {
 
     std::signal(SIGINT, signalHandler);
     std::signal(SIGTERM, signalHandler);
+
+    // --Kafka Bus (optional) --------------------------------------
+    std::unique_ptr<KafkaBus> kafkaBus;
+    const char* kafkaBrokers = std::getenv("EUNEX_KAFKA_BROKERS");
+    if (kafkaBrokers && kafkaBrokers[0] != '\0') {
+        KafkaBusConfig cfg;
+        cfg.brokers = kafkaBrokers;
+        kafkaBus = std::make_unique<KafkaBus>(cfg);
+    }
 
     // --Symbol definitions ----------------------------------------
     constexpr SymbolIndex_t SYM_AAPL  = 1;
@@ -72,14 +83,15 @@ int main() {
     }
 
     // --Core 1: Order Books (per symbol) --------------------------
+    KafkaBus* kb = kafkaBus.get();
     auto bookAAPL = std::make_unique<MECoreActor>(
-        SYM_AAPL, oeGateway->getActorId(), mdActor->getActorId(), chActor->getActorId());
+        SYM_AAPL, oeGateway->getActorId(), mdActor->getActorId(), chActor->getActorId(), kb);
     auto bookMSFT = std::make_unique<MECoreActor>(
-        SYM_MSFT, oeGateway->getActorId(), mdActor->getActorId(), chActor->getActorId());
+        SYM_MSFT, oeGateway->getActorId(), mdActor->getActorId(), chActor->getActorId(), kb);
     auto bookGOOGL = std::make_unique<MECoreActor>(
-        SYM_GOOGL, oeGateway->getActorId(), mdActor->getActorId(), chActor->getActorId());
+        SYM_GOOGL, oeGateway->getActorId(), mdActor->getActorId(), chActor->getActorId(), kb);
     auto bookEURO50 = std::make_unique<MECoreActor>(
-        SYM_EURO50, oeGateway->getActorId(), mdActor->getActorId(), chActor->getActorId());
+        SYM_EURO50, oeGateway->getActorId(), mdActor->getActorId(), chActor->getActorId(), kb);
 
     oeGateway->mapSymbol(SYM_AAPL, bookAAPL->getActorId());
     oeGateway->mapSymbol(SYM_MSFT, bookMSFT->getActorId());
@@ -111,7 +123,13 @@ int main() {
     std::cout << "Services:\n";
     std::cout << "  FIX Gateway:  TCP port 9001\n";
     std::cout << "  AI Traders:   10 members (MBR01-MBR10)\n";
-    std::cout << "  Symbols:      AAPL, MSFT, GOOGL, EURO50\n\n";
+    std::cout << "  Symbols:      AAPL, MSFT, GOOGL, EURO50\n";
+    if (kafkaBus && kafkaBus->isConnected()) {
+        std::cout << "  Kafka Bus:    " << kafkaBrokers << " (connected)\n";
+    } else {
+        std::cout << "  Kafka Bus:    disabled (set EUNEX_KAFKA_BROKERS to enable)\n";
+    }
+    std::cout << "\n";
 
     // --Seed initial orders for AI to have market data ------------
     std::cout << "Seeding initial order book...\n";
@@ -179,6 +197,11 @@ int main() {
             if (fixGateway->isRunning()) {
                 std::cout << "  FIX clients: " << fixGateway->clientCount() << "\n";
             }
+            if (kafkaBus && kafkaBus->isConnected()) {
+                std::cout << "  Kafka: orders=" << kafkaBus->orderCount()
+                          << " trades=" << kafkaBus->tradeCount()
+                          << " md=" << kafkaBus->mdCount() << "\n";
+            }
             std::cout << "\n";
         }
 
@@ -210,6 +233,14 @@ int main() {
     }
 
     std::cout << "\nTrades processed: " << mdActor->getRecentTrades().size() << "\n";
+
+    if (kafkaBus) {
+        kafkaBus->flush();
+        std::cout << "Kafka totals: orders=" << kafkaBus->orderCount()
+                  << " trades=" << kafkaBus->tradeCount()
+                  << " md=" << kafkaBus->mdCount() << "\n";
+    }
+
     std::cout << "===========================================\n";
     std::cout << "  Engine stopped.\n";
     return 0;

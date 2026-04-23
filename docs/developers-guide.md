@@ -1,6 +1,6 @@
 # EuNEx Developers Guide
 
-**Version 0.4.0** | Euronext Optiq-Modeled Exchange Simulator
+**Version 0.5.0** | Euronext Optiq-Modeled Exchange Simulator
 
 ---
 
@@ -15,13 +15,14 @@
 7. [Event System](#7-event-system)
 8. [Order Book & Matching](#8-order-book--matching)
 9. [Recovery & IACA](#9-recovery--iaca)
-10. [FIX Protocol Gateway](#10-fix-protocol-gateway)
-11. [Clearing House](#11-clearing-house)
-12. [AI Trading Members](#12-ai-trading-members)
-13. [Project Structure](#13-project-structure)
-14. [Build & Test](#14-build--test)
-15. [Configuration](#15-configuration)
-16. [Extending EuNEx](#16-extending-eunex)
+10. [Kafka Bus](#10-kafka-bus)
+11. [FIX Protocol Gateway](#11-fix-protocol-gateway)
+12. [Clearing House](#12-clearing-house)
+13. [AI Trading Members](#13-ai-trading-members)
+14. [Project Structure](#14-project-structure)
+15. [Build & Test](#15-build--test)
+16. [Configuration](#16-configuration)
+17. [Extending EuNEx](#17-extending-eunex)
 
 ---
 
@@ -523,7 +524,72 @@ The `Book` class implements price-time priority matching:
 
 ---
 
-## 10. FIX Protocol Gateway
+## 10. Kafka Bus
+
+### Overview
+
+The Kafka Bus (`src/persistence/KafkaBus.hpp`) mirrors the Optiq KFK (Kafka Bus) that connects the Matching Engine to downstream consumers: MDG, PTB, Clearing, IDS, and SATURN.
+
+When `EUNEX_USE_KAFKA` is enabled at compile time and `EUNEX_KAFKA_BROKERS` is set at runtime, the bus publishes events to Kafka topics in real time. When disabled, a no-op stub compiles in its place so the engine runs standalone.
+
+### Topics
+
+```
+  Topic                        Content                  Key
+  ─────────────────────────────────────────────────────────────
+  eunex.orders                 Raw Order structs        symbolIdx
+  eunex.trades                 Trade structs            symbolIdx
+  eunex.market-data            BBO snapshots            symbolIdx
+  eunex.recovery.fragments     Recovery fragments       originId:originKey
+  eunex.control                Control messages         (reserved)
+```
+
+### Architecture
+
+```
+  MECoreActor (per symbol)
+       │
+       ├─ onEvent(NewOrderEvent)
+       │     ├─ kafka_->publishOrder(order)         → eunex.orders
+       │     ├─ onTrade callback:
+       │     │     ├─ kafka_->publishTrade(trade)    → eunex.trades
+       │     │     └─ mdPipe_ / chPipe_ (actors)
+       │     └─ publishBookUpdate()
+       │           └─ kafka_->publishMarketData(...) → eunex.market-data
+       │
+       └─ KafkaBus* kafka_  (nullptr when disabled)
+```
+
+### Compile-Time Toggle
+
+```cmake
+cmake .. -DEUNEX_USE_KAFKA=ON    # requires librdkafka-dev
+cmake .. -DEUNEX_USE_KAFKA=OFF   # no-op stub (default)
+```
+
+### Runtime Configuration
+
+Set `EUNEX_KAFKA_BROKERS` environment variable:
+
+```bash
+export EUNEX_KAFKA_BROKERS=kafka:9092
+./eunex_me
+```
+
+The engine prints Kafka connection status at startup and publishes cumulative stats (orders, trades, market-data messages) every 10 rounds.
+
+### Docker Deployment
+
+`docker/docker-compose.yml` runs Kafka in KRaft mode (no ZooKeeper) using `apache/kafka:3.9.0`, creates all topics via `kafka-init`, then starts the engine with `EUNEX_KAFKA_BROKERS=kafka:9092`.
+
+```bash
+cd docker
+docker compose up --build
+```
+
+---
+
+## 11. FIX Protocol Gateway
 
 ### FIXAcceptorActor (`src/actors/FIXAcceptorActor.hpp`)
 
@@ -583,7 +649,7 @@ The `Book` class implements price-time priority matching:
 
 ---
 
-## 11. Clearing House
+## 12. Clearing House
 
 ### ClearingHouseActor (`src/actors/ClearingHouseActor.hpp`)
 
@@ -630,7 +696,7 @@ The `Book` class implements price-time priority matching:
 
 ---
 
-## 12. AI Trading Members
+## 13. AI Trading Members
 
 ### AITraderActor (`src/actors/AITraderActor.hpp`)
 
@@ -682,7 +748,7 @@ The `Book` class implements price-time priority matching:
 
 ---
 
-## 13. Project Structure
+## 14. Project Structure
 
 ```
  EuNEx/
@@ -744,7 +810,7 @@ The `Book` class implements price-time priority matching:
 
 ---
 
-## 14. Build & Test
+## 15. Build & Test
 
 ### Prerequisites
 
@@ -803,7 +869,7 @@ cd build && ctest -C Release --output-on-failure
 
 ---
 
-## 15. Configuration
+## 16. Configuration
 
 ### Runtime Configuration (main.cpp)
 
@@ -829,7 +895,7 @@ The engine pre-populates order books with spread-defining orders:
 
 ---
 
-## 16. Extending EuNEx
+## 17. Extending EuNEx
 
 ### Adding a New Symbol
 

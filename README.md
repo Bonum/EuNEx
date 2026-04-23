@@ -27,7 +27,7 @@ ch_ai_trader.py          →   ClearingHouseActor        →   Clearing House (P
   AI strategies          →   AITraderActor             →   Trading obligations
 ```
 
-## Actor Topology (v0.4)
+## Actor Topology (v0.5)
 
 ```
  Core 0: OEGActor + FIXAcceptorActor     ← Order entry & FIX protocol
@@ -109,16 +109,24 @@ cmake --build build --config Release
 # Run matching engine
 ./build/Release/eunex_me
 
-# Run all tests (6 suites)
+# Run all tests (7 suites)
 cd build && ctest -C Release
 ```
 
 ## With Kafka Persistence
 
 ```bash
+# Compile with Kafka support (requires librdkafka-dev)
 cmake -B build -DEUNEX_USE_KAFKA=ON
 cmake --build build --config Release
+
+# Run with Kafka (set broker address)
+EUNEX_KAFKA_BROKERS=localhost:9092 ./build/Release/eunex_me
+
+# Topics: eunex.orders, eunex.trades, eunex.market-data, eunex.recovery.fragments
 ```
+
+Without `EUNEX_USE_KAFKA`, the engine compiles with a no-op stub and runs standalone.
 
 ## FIX Gateway
 
@@ -163,6 +171,7 @@ EuNEx/
 │   ├── net/SocketCompat.hpp           # Cross-platform socket abstraction
 │   ├── persistence/
 │   │   ├── PersistenceStore.hpp        # Abstract store + InMemoryStore
+│   │   ├── KafkaBus.hpp                # Multi-topic Kafka publisher (Optiq KFK)
 │   │   └── KafkaStore.hpp              # Kafka persistence (optional)
 │   ├── recovery/RecoveryProxy.hpp/cpp  # Recovery Cause/Effect
 │   └── iaca/

@@ -6,10 +6,12 @@ namespace eunex {
 MECoreActor::MECoreActor(SymbolIndex_t symbolIdx,
                                const tredzone::ActorId& oeGatewayId,
                                const tredzone::ActorId& marketDataId,
-                               const tredzone::ActorId& clearingHouseId)
+                               const tredzone::ActorId& clearingHouseId,
+                               KafkaBus* kafkaBus)
     : book_(symbolIdx)
     , oePipe_(*this, oeGatewayId)
     , mdPipe_(*this, marketDataId)
+    , kafka_(kafkaBus)
 {
     if (clearingHouseId.id != 0) {
         chPipe_.emplace(*this, clearingHouseId);
@@ -18,10 +20,6 @@ MECoreActor::MECoreActor(SymbolIndex_t symbolIdx,
     registerEventHandler<CancelOrderEvent>(*this);
     registerEventHandler<ModifyOrderEvent>(*this);
 }
-
-// ── NewOrder ───────────────────────────────────────────────────────
-// StockEx: match_order(order, producer)
-// Optiq:   RecoveryCause.onInput → CauseOperator → forwardToBook()
 
 void MECoreActor::onEvent(const NewOrderEvent& event) {
     Order order{};
@@ -35,9 +33,12 @@ void MECoreActor::onEvent(const NewOrderEvent& event) {
     order.sessionId  = event.sessionId;
     order.stopPrice  = event.stopPrice;
 
+    if (kafka_) kafka_->publishOrder(order);
+
     auto onTrade = [this](const Trade& trade) {
         mdPipe_.push<TradeEvent>(trade);
         if (chPipe_) chPipe_->push<TradeEvent>(trade);
+        if (kafka_) kafka_->publishTrade(trade);
     };
     auto onExec = [this, &event](const ExecutionReport& rpt) {
         oePipe_.push<ExecReportEvent>(rpt, event.sessionId);
@@ -45,16 +46,12 @@ void MECoreActor::onEvent(const NewOrderEvent& event) {
 
     book_.newOrder(order, onTrade, onExec);
 
-    // Trigger any stop orders whose stopPrice has been crossed
     if (book_.stopOrderCount() > 0 && book_.lastTradePrice() != 0) {
         book_.triggerStopOrders(book_.lastTradePrice(), onTrade, onExec);
     }
 
     publishBookUpdate();
 }
-
-// ── Cancel ─────────────────────────────────────────────────────────
-// StockEx: handle_cancel(msg, producer)
 
 void MECoreActor::onEvent(const CancelOrderEvent& event) {
     ExecutionReport rpt{};
@@ -68,9 +65,6 @@ void MECoreActor::onEvent(const CancelOrderEvent& event) {
     }
 }
 
-// ── Modify (Cancel-Replace) ────────────────────────────────────────
-// StockEx: handle_amend(msg, producer)
-
 void MECoreActor::onEvent(const ModifyOrderEvent& event) {
     ExecutionReport rpt{};
     if (book_.modifyOrder(event.orderId, event.newPrice, event.newQuantity, rpt)) {
@@ -82,10 +76,6 @@ void MECoreActor::onEvent(const ModifyOrderEvent& event) {
         oePipe_.push<ExecReportEvent>(reject, event.sessionId);
     }
 }
-
-// ── Publish book snapshot to MarketData actor ──────────────────────
-// StockEx: the Dashboard reads orderbook via REST GET /orderbook/<symbol>
-// Optiq:   publishLimitEffect → push to MDLimitLogicalCoreHandler
 
 void MECoreActor::publishBookUpdate() {
     BookUpdateEvent update;
@@ -104,6 +94,14 @@ void MECoreActor::publishBookUpdate() {
     }
 
     mdPipe_.push<BookUpdateEvent>(update);
+
+    if (kafka_) {
+        Price_t bb = bidLevels.empty() ? 0 : bidLevels[0].price;
+        Price_t ba = askLevels.empty() ? 0 : askLevels[0].price;
+        Quantity_t bq = bidLevels.empty() ? 0 : bidLevels[0].totalQty;
+        Quantity_t aq = askLevels.empty() ? 0 : askLevels[0].totalQty;
+        kafka_->publishMarketData(book_.symbolIndex(), bb, ba, bq, aq);
+    }
 }
 
 } // namespace eunex
