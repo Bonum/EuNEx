@@ -102,6 +102,21 @@ EuNEx (Euronext Exchange Simulator) is a C++20 actor-based matching engine that 
             (→ OEG)   │       (→ MDG)   │      (→ MDG)   │
                      │                │                │
  ╔═══════════════════╪════════════════╪════════════════╪═══════════════════════╗
+ ║  KAFKA BUS (optional, Optiq KFK)  │                │                        ║
+ ║  ┌─────────────────────────────────────────────────────────────────────┐     ║
+ ║  │  KafkaBus (shared by all MECoreActors)                              │     ║
+ ║  │                                                                     │     ║
+ ║  │  • eunex.orders        ← raw Order on entry                        │     ║
+ ║  │  • eunex.trades        ← Trade on each fill                        │     ║
+ ║  │  • eunex.market-data   ← BBO snapshot on book update               │     ║
+ ║  │  • eunex.recovery.fragments ← recovery data                        │     ║
+ ║  │                                                                     │     ║
+ ║  │  Enabled: EUNEX_USE_KAFKA=ON + EUNEX_KAFKA_BROKERS env var         │     ║
+ ║  │  Disabled: no-op stub compiles in (default)                        │     ║
+ ║  └─────────────────────────────────────────────────────────────────────┘     ║
+ ╚═════════════════════════════════════════════════════════════════════════════╝
+                     │                │                │
+ ╔═══════════════════╪════════════════╪════════════════╪═══════════════════════╗
  ║  CORE 2 — Market Data             ▼                ▼                        ║
  ║  ┌─────────────────────────────────────────────────────────────────────┐     ║
  ║  │  MDGActor                                                           │     ║
@@ -208,6 +223,9 @@ EuNEx components are named to match Euronext Optiq production terminology:
  MECoreActor ──TradeEvent──────► MDGActor
              ──BookUpdateEvent─► MDGActor
              ──TradeEvent──────► ClearingHouseActor
+             ──publishOrder()──► KafkaBus → eunex.orders      (if Kafka enabled)
+             ──publishTrade()──► KafkaBus → eunex.trades       (if Kafka enabled)
+             ──publishMarketData()► KafkaBus → eunex.market-data (if Kafka enabled)
 
  AITraderActor ──NewOrderEvent──► OEGActor (via pipe)
 ```
@@ -232,15 +250,20 @@ EuNEx components are named to match Euronext Optiq production terminology:
                               ┌────────────────────────────────────────────────────┐
                               │                  MECoreActor                        │
                               │                                                    │
-                              │   1. RecoveryProxy.cause() — persist fragment      │
-                              │   2. Book.newOrder() — price-time matching         │
-                              │   3. For each fill:                                │
+                              │   1. KafkaBus.publishOrder() → eunex.orders *      │
+                              │   2. RecoveryProxy.cause() — persist fragment      │
+                              │   3. Book.newOrder() — price-time matching         │
+                              │   4. For each fill:                                │
                               │      a. Trade generated (buyer + seller session)   │
                               │      b. TradeEvent → MDGActor                     │
                               │      c. TradeEvent → ClearingHouseActor           │
-                              │   4. ExecReportEvent → OEGActor (ack/fill/reject) │
-                              │   5. BookUpdateEvent → MDGActor (new BBO)         │
-                              │   6. IACA fragments → IacaAggregator              │
+                              │      d. KafkaBus.publishTrade() → eunex.trades *  │
+                              │   5. ExecReportEvent → OEGActor (ack/fill/reject) │
+                              │   6. BookUpdateEvent → MDGActor (new BBO)         │
+                              │   7. KafkaBus.publishMarketData() → eunex.md *    │
+                              │   8. IACA fragments → IacaAggregator              │
+                              │                                                    │
+                              │   * only when EUNEX_KAFKA_BROKERS is set           │
                               └────────────────────────────────────────────────────┘
                                          │                          │
                                 ExecReportEvent              TradeEvent
@@ -267,6 +290,8 @@ EuNEx components are named to match Euronext Optiq production terminology:
 ```
  MECoreActor ──TradeEvent──────────────► MDGActor
              ──BookUpdateEvent──────────►    │
+             ──publishTrade()────────────► KafkaBus → eunex.trades *
+             ──publishMarketData()───────► KafkaBus → eunex.market-data *
                                               │
                                               ▼
                                      ┌──────────────────────┐
@@ -287,6 +312,8 @@ EuNEx components are named to match Euronext Optiq production terminology:
                                               │
                                      getSnapshot() / getRecentTrades()
                                      (thread-safe, read by Python bridge)
+
+ * KafkaBus publishes only when EUNEX_KAFKA_BROKERS is set at runtime
 ```
 
 ---
