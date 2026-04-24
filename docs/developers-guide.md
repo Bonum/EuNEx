@@ -1,6 +1,6 @@
 # EuNEx Developers Guide
 
-**Version 0.7.0** | Euronext Optiq-Modeled Exchange Simulator
+**Version 0.8.0** | Euronext Optiq-Modeled Exchange Simulator
 
 ---
 
@@ -20,10 +20,12 @@
 12. [Clearing House](#12-clearing-house)
 13. [AI Trading Members](#13-ai-trading-members)
 14. [Market Simulation](#14-market-simulation)
-15. [Project Structure](#15-project-structure)
-16. [Build & Test](#16-build--test)
-17. [Configuration](#17-configuration)
-18. [Extending EuNEx](#18-extending-eunex)
+15. [AI Market Analyst](#15-ai-market-analyst)
+16. [Developer Message Flow Visualizer](#16-developer-message-flow-visualizer)
+17. [Project Structure](#17-project-structure)
+18. [Build & Test](#18-build--test)
+19. [Configuration](#19-configuration)
+20. [Extending EuNEx](#20-extending-eunex)
 
 ---
 
@@ -949,7 +951,101 @@ The price chart renders OHLCV data as candlestick bars using a custom Chart.js p
 
 ---
 
-## 15. Project Structure
+## 15. AI Market Analyst
+
+The dashboard includes an AI analyst powered by local or cloud LLM providers.
+
+### Provider Fallback Chain
+
+```
+ Auto mode tries in order:
+   1. Ollama (local)    → POST {OLLAMA_HOST}/api/chat
+   2. Groq (cloud)      → POST api.groq.com/openai/v1/chat/completions
+   3. HuggingFace       → POST router.huggingface.co/v1/chat/completions
+```
+
+### Environment Variables
+
+| Variable       | Default                        | Description              |
+|---------------|-------------------------------|--------------------------|
+| OLLAMA_HOST    | http://localhost:11434        | Ollama API endpoint      |
+| OLLAMA_MODEL   | llama3.2:3b                   | Default Ollama model     |
+| GROQ_API_KEY   | (empty)                       | Groq API key             |
+| GROQ_MODEL     | llama-3.1-8b-instant          | Default Groq model       |
+| HF_TOKEN       | (empty)                       | HuggingFace token        |
+| HF_MODEL       | Qwen/Qwen2.5-7B-Instruct     | Default HF model         |
+
+### Prompt Template
+
+The analyst builds a market context prompt from current trades and order book:
+
+```
+ You are a concise financial market analyst for the EuNEx simulated exchange.
+ Time: HH:MM:SS | Session: ACTIVE
+
+ Recent trades:
+   AAPL: 12 trade(s), range 153.50-154.50, vol 1200, last 154.10
+   MSFT: 8 trade(s), range 323.80-324.20, vol 800, last 324.00
+   ...
+
+ Order book:
+   AAPL: Bid 153.80 / Ask 154.20 (spread 0.40)
+   ...
+
+ In 3-4 sentences: activity level, notable moves, market sentiment.
+```
+
+### API Endpoints
+
+| Endpoint          | Method | Description                    |
+|-------------------|--------|--------------------------------|
+| /ai/generate      | POST   | Trigger async LLM generation   |
+| /ai/insights      | GET    | Get cached insight history     |
+| /ai/config        | GET    | Provider availability/status   |
+| /ai/select        | POST   | Switch provider/model          |
+
+Insights are broadcast via SSE `ai_insight` event and cached in memory (last 20).
+
+---
+
+## 16. Developer Message Flow Visualizer
+
+The dashboard includes a "Message Flow" tab that traces the full order lifecycle through all system components. This is a developer tool for understanding and debugging the Optiq-modeled pipeline.
+
+### Pipeline Stages
+
+```
+ ┌─────┐    ┌──────┐    ┌───────┐    ┌───────┐    ┌────┐    ┌────┐
+ │ OEG │ ─► │ Book │ ─► │ Match │ ─► │ Trade │ ─► │ DB │ ─► │ CH │
+ └─────┘    └──────┘    └───────┘    └───────┘    └────┘    └────┘
+   Order      Insert      Fill         Record      SQLite    Clear
+   Entry      /Status     Partial      Trade       Persist   House
+```
+
+Each stage logs a timestamped message with detail text. Messages flow via SSE `msgflow` events for real-time display.
+
+### Implementation
+
+The visualizer uses Python function patching to intercept the matching engine methods:
+- `engine.submit_order()` → logs OEG (entry) + Book (status) + Match (fill)
+- `engine.cancel_order()` → logs OEG (cancel) + Book (cancelled)
+- `broadcast_event("trade", ...)` → logs Trade + DB + CH steps
+
+### API
+
+| Endpoint          | Method | Description                     |
+|-------------------|--------|---------------------------------|
+| /dev/messages     | GET    | Get recent message log (500 max)|
+
+### UI Features
+
+- **Pipeline counter**: shows cumulative message count per stage
+- **Live log**: new messages appear at top with highlight animation
+- **Clear**: resets all counters and log entries
+
+---
+
+## 17. Project Structure
 
 ```
  EuNEx/
@@ -1011,7 +1107,7 @@ The price chart renders OHLCV data as candlestick bars using a custom Chart.js p
 
 ---
 
-## 16. Build & Test
+## 18. Build & Test
 
 ### Prerequisites
 
@@ -1070,7 +1166,7 @@ cd build && ctest -C Release --output-on-failure
 
 ---
 
-## 17. Configuration
+## 19. Configuration
 
 ### Runtime Configuration (main.cpp)
 
@@ -1099,7 +1195,7 @@ The engine pre-populates order books with spread-defining orders:
 
 ---
 
-## 18. Extending EuNEx
+## 20. Extending EuNEx
 
 ### Adding a New Symbol
 
@@ -1148,9 +1244,11 @@ The engine pre-populates order books with spread-defining orders:
  ✓ Clearing house + AI traders     □ EuroCCP/LCH integration
  ✓ IACA fragments                  □ IACA FINISH + COPY + IDS
  ✓ Python bridge (JSON)            □ SBE multicast MDG
- ✓ Market simulation (C++ + Py)    □ AI analyst (Ollama/Llama)
- ✓ Ticker tape + OHLCV charts      □ SBE multicast MDG
- ✓ Daily close persistence          □ Multi-day backtesting
+ ✓ Market simulation (C++ + Py)    □ SBE multicast MDG
+ ✓ Ticker tape + OHLCV charts      □ Multi-day backtesting
+ ✓ Daily close persistence          □ Real Simplx multi-core
+ ✓ AI Analyst (Ollama/Groq/HF)     □ EuroCCP/LCH integration
+ ✓ Message Flow Visualizer          □ FIX 5.0 SP2 + SBE binary
                                     □ SQLite trade persistence
                                     □ Developer message visualizer
                                     □ SATURN ARM (MiFID II RTS 22)

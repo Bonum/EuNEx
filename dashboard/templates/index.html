@@ -26,7 +26,17 @@ button:hover{opacity:.85}
 .btn-yellow{background:var(--yellow);color:var(--bg)}
 .btn-red{background:var(--red);color:#fff}
 .btn-blue{background:var(--blue);color:#fff}
+.btn-purple{background:var(--purple);color:#fff}
 .btn-small{padding:3px 8px;font-size:11px}
+
+/* ── Tabs ────────────────────────────────────────────── */
+.tab-bar{display:flex;gap:2px;padding:0 20px;background:var(--card);border-bottom:1px solid var(--border)}
+.tab-btn{padding:10px 20px;background:transparent;color:var(--muted);border:none;border-bottom:2px solid transparent;
+cursor:pointer;font-size:13px;font-weight:600;transition:all .2s}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab-content{display:none}
+.tab-content.active{display:block}
 
 /* ── Ticker tape ─────────────────────────────────────── */
 .ticker-wrap{background:#0d1130;border-bottom:1px solid var(--border);overflow:hidden;height:32px;position:relative}
@@ -89,6 +99,43 @@ border-radius:6px;color:var(--text);font-size:12px}
 .lb-rank{color:var(--yellow);font-weight:700;width:20px}
 .lb-name{flex:1;margin-left:6px}
 .lb-val{font-weight:600}
+
+/* ── AI Analyst panel ────────────────────────────────── */
+.ai-panel{border-top:3px solid var(--purple);margin:12px 20px;background:var(--card);border-radius:8px;padding:14px;border:1px solid var(--border)}
+.ai-panel h3{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ai-controls{display:flex;gap:6px;align-items:center;margin-left:auto}
+.ai-controls select{padding:4px 8px;background:#1a1f45;border:1px solid var(--border);border-radius:4px;color:var(--muted);font-size:11px}
+.ai-badge{font-size:10px;padding:2px 8px;border-radius:8px;background:#7c5cfc22;color:var(--purple);font-weight:600}
+.ai-status{font-size:11px;color:var(--muted)}
+.insight-card{border-left:3px solid var(--purple);background:#1a1f4566;padding:10px 14px;margin-bottom:8px;border-radius:0 6px 6px 0;animation:fadeIn .4s ease}
+.insight-time{font-size:10px;color:var(--muted);margin-bottom:4px;display:flex;gap:8px;align-items:center}
+.insight-src{font-size:9px;padding:1px 6px;border-radius:4px;background:#7c5cfc22;color:var(--purple)}
+.insight-text{line-height:1.5;font-size:12px}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── Message Flow Visualizer ─────────────────────────── */
+.flow-panel{margin:12px 20px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px}
+.flow-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.flow-pipeline{display:flex;gap:2px;margin-bottom:16px;justify-content:center;flex-wrap:wrap}
+.flow-stage{text-align:center;padding:8px 14px;border-radius:6px;font-size:11px;font-weight:600;min-width:90px;position:relative}
+.flow-stage .count{font-size:16px;display:block;margin-bottom:2px}
+.flow-arrow{color:var(--muted);font-size:18px;display:flex;align-items:center;padding:0 2px}
+.stage-oeg{background:#4a90d922;color:var(--blue);border:1px solid #4a90d944}
+.stage-book{background:#00d4aa22;color:var(--accent);border:1px solid #00d4aa44}
+.stage-match{background:#f0c04022;color:var(--yellow);border:1px solid #f0c04044}
+.stage-trade{background:#7c5cfc22;color:var(--purple);border:1px solid #7c5cfc44}
+.stage-db{background:#ff6b6b22;color:var(--red);border:1px solid #ff6b6b44}
+.stage-ch{background:#00d4aa22;color:var(--accent);border:1px solid #00d4aa44}
+.flow-log{max-height:300px;overflow-y:auto;font-family:'Cascadia Code','Fira Code',monospace;font-size:11px}
+.flow-entry{padding:3px 8px;border-bottom:1px solid #1a1f4522;display:flex;gap:10px}
+.flow-entry:hover{background:#1a1f4544}
+.flow-ts{color:var(--muted);min-width:75px;font-size:10px}
+.flow-tag{min-width:50px;font-weight:600;font-size:10px;text-transform:uppercase}
+.flow-tag-oeg{color:var(--blue)}.flow-tag-book{color:var(--accent)}.flow-tag-match{color:var(--yellow)}
+.flow-tag-trade{color:var(--purple)}.flow-tag-db{color:var(--red)}.flow-tag-ch{color:var(--accent)}
+.flow-detail{color:var(--text)}
+.flow-active{animation:pulse .6s ease}
+@keyframes pulse{0%{background:#7c5cfc22}100%{background:transparent}}
 </style>
 </head>
 <body>
@@ -108,6 +155,16 @@ border-radius:6px;color:var(--text);font-size:12px}
 <div class="ticker-wrap">
   <div class="ticker-track" id="tickerTrack"></div>
 </div>
+
+<!-- Tab bar -->
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('trading')">Trading</button>
+  <button class="tab-btn" onclick="switchTab('analyst')">AI Analyst</button>
+  <button class="tab-btn" onclick="switchTab('devflow')">Message Flow</button>
+</div>
+
+<!-- ═══════════════ TAB: Trading ═══════════════ -->
+<div id="tab-trading" class="tab-content active">
 
 <!-- Row 1: Order Entry | Order Book | Market Snapshot -->
 <div class="grid">
@@ -201,6 +258,68 @@ border-radius:6px;color:var(--text);font-size:12px}
   </div>
 </div>
 
+</div><!-- /tab-trading -->
+
+<!-- ═══════════════ TAB: AI Analyst ═══════════════ -->
+<div id="tab-analyst" class="tab-content">
+  <div class="ai-panel">
+    <h3>AI Market Analyst
+      <div class="ai-controls">
+        <select id="aiProvider" onchange="onAIProviderChange()">
+          <option value="auto">Auto</option>
+          <option value="ollama">Ollama</option>
+          <option value="groq">Groq</option>
+          <option value="hf">HuggingFace</option>
+        </select>
+        <span class="ai-badge" id="aiBadge">auto</span>
+        <button class="btn-purple" id="aiGenerateBtn" onclick="triggerAI()">Generate Analysis</button>
+        <span class="ai-status" id="aiStatus">Ready</span>
+      </div>
+    </h3>
+    <div id="aiInsights" style="max-height:500px;overflow-y:auto">
+      <div class="muted" style="padding:20px;text-align:center">
+        Click "Generate Analysis" to get AI market commentary.<br>
+        <span style="font-size:11px">Requires Ollama running locally, or GROQ_API_KEY / HF_TOKEN set.</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ TAB: Message Flow ═══════════════ -->
+<div id="tab-devflow" class="tab-content">
+  <div class="flow-panel">
+    <div class="flow-header">
+      <h3 style="color:var(--accent);margin:0">Message Flow Visualizer</h3>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span class="muted" id="flowCount">0 messages</span>
+        <button class="btn-small btn-red" onclick="clearFlowLog()">Clear</button>
+      </div>
+    </div>
+
+    <!-- Pipeline diagram -->
+    <div class="flow-pipeline">
+      <div class="flow-stage stage-oeg"><span class="count" id="flowCntOEG">0</span>OEG</div>
+      <div class="flow-arrow">&#9654;</div>
+      <div class="flow-stage stage-book"><span class="count" id="flowCntBook">0</span>Book</div>
+      <div class="flow-arrow">&#9654;</div>
+      <div class="flow-stage stage-match"><span class="count" id="flowCntMatch">0</span>Match</div>
+      <div class="flow-arrow">&#9654;</div>
+      <div class="flow-stage stage-trade"><span class="count" id="flowCntTrade">0</span>Trade</div>
+      <div class="flow-arrow">&#9654;</div>
+      <div class="flow-stage stage-db"><span class="count" id="flowCntDB">0</span>DB</div>
+      <div class="flow-arrow">&#9654;</div>
+      <div class="flow-stage stage-ch"><span class="count" id="flowCntCH">0</span>CH</div>
+    </div>
+
+    <!-- Live message log -->
+    <div class="flow-log" id="flowLog">
+      <div class="muted" style="padding:20px;text-align:center">
+        Waiting for messages... Submit an order or start a session to see the flow.
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Amend Modal -->
 <div class="modal-overlay" id="amendModal">
 <div class="modal">
@@ -218,6 +337,19 @@ const state = {orders:[], trades:[], snapshots:{}, symbols:{}, session:'idle'};
 let chartPeriod = '1h';
 let priceChart = null;
 const prevPrices = {};
+const flowCounts = {OEG:0, Book:0, Match:0, Trade:0, DB:0, CH:0};
+let flowEntries = [];
+let flowStarted = false;
+
+// ── Tab switching ─────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  document.querySelector('.tab-btn[onclick*="'+name+'"]').classList.add('active');
+  if (name === 'analyst') loadAIInsights();
+  if (name === 'devflow') loadFlowLog();
+}
 
 async function init() {
   const resp = await fetch('/data');
@@ -277,6 +409,17 @@ function connectSSE() {
     const s = JSON.parse(e.data);
     state.session = s.status;
     renderSession();
+  });
+  es.addEventListener('ai_insight', e => {
+    const insight = JSON.parse(e.data);
+    addInsightCard(insight);
+    const btn = document.getElementById('aiGenerateBtn');
+    btn.disabled = false; btn.textContent = 'Generate Analysis';
+    document.getElementById('aiStatus').textContent = 'Last: ' + new Date().toLocaleTimeString();
+  });
+  es.addEventListener('msgflow', e => {
+    const entry = JSON.parse(e.data);
+    addFlowEntry(entry);
   });
 }
 
@@ -404,7 +547,6 @@ function updateChart(bars, symName) {
   const opens = bars.map(b => b.open);
   const closes = bars.map(b => b.close);
   const volumes = bars.map(b => b.volume);
-  const colors = bars.map(b => b.close >= b.open ? '#00d4aa' : '#ff6b6b');
   const bgColors = bars.map(b => b.close >= b.open ? '#00d4aa44' : '#ff6b6b44');
 
   if (priceChart) priceChart.destroy();
@@ -417,7 +559,6 @@ function updateChart(bars, symName) {
       if (!meta || !meta.data.length) return;
       const yScale = chart.scales.y;
       const xScale = chart.scales.x;
-
       meta.data.forEach((point, i) => {
         if (i >= bars.length) return;
         const x = point.x;
@@ -427,20 +568,13 @@ function updateChart(bars, symName) {
         const close = yScale.getPixelForValue(closes[i]);
         const color = closes[i] >= opens[i] ? '#00d4aa' : '#ff6b6b';
         const barW = Math.max(4, (xScale.width / bars.length) * 0.6);
-
         ctx.save();
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(x, high);
-        ctx.lineTo(x, low);
-        ctx.stroke();
-
+        ctx.strokeStyle = color; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(x, high); ctx.lineTo(x, low); ctx.stroke();
         ctx.fillStyle = color;
         const top = Math.min(open, close);
         const bot = Math.max(open, close);
-        const bodyH = Math.max(bot - top, 1);
-        ctx.fillRect(x - barW/2, top, barW, bodyH);
+        ctx.fillRect(x - barW/2, top, barW, Math.max(bot - top, 1));
         ctx.restore();
       });
     }
@@ -451,12 +585,10 @@ function updateChart(bars, symName) {
     data: {
       labels,
       datasets: [{
-        label: symName + ' Close',
-        data: closes, borderColor: 'transparent', backgroundColor: 'transparent',
-        pointRadius: 0, borderWidth: 0, yAxisID: 'y',
+        label: symName + ' Close', data: closes, borderColor: 'transparent',
+        backgroundColor: 'transparent', pointRadius: 0, borderWidth: 0, yAxisID: 'y',
       },{
-        label: 'Volume', data: volumes, type: 'bar',
-        backgroundColor: bgColors, yAxisID: 'y1',
+        label: 'Volume', data: volumes, type: 'bar', backgroundColor: bgColors, yAxisID: 'y1',
       }]
     },
     options: {
@@ -466,11 +598,9 @@ function updateChart(bars, symName) {
         legend:{display:false},
         tooltip: {
           callbacks: {
-            label: function(ctx) {
-              const i = ctx.dataIndex;
-              if (ctx.datasetIndex === 0 && i < bars.length) {
-                return 'O:'+fmt(opens[i])+' H:'+fmt(highs[i])+' L:'+fmt(lows[i])+' C:'+fmt(closes[i]);
-              }
+            label: function(c) {
+              const i = c.dataIndex;
+              if (c.datasetIndex === 0 && i < bars.length) return 'O:'+fmt(opens[i])+' H:'+fmt(highs[i])+' L:'+fmt(lows[i])+' C:'+fmt(closes[i]);
               return 'Vol: ' + (volumes[i]||0);
             }
           }
@@ -510,6 +640,95 @@ async function loadLeaderboard() {
   }
 }
 
+// ── AI Analyst ────────────────────────────────────────
+async function loadAIInsights() {
+  try {
+    const resp = await fetch('/ai/insights');
+    const insights = await resp.json();
+    const el = document.getElementById('aiInsights');
+    if (insights.length === 0) return;
+    el.innerHTML = '';
+    insights.forEach(addInsightCard);
+  } catch(e) {}
+}
+
+function addInsightCard(insight) {
+  const el = document.getElementById('aiInsights');
+  if (el.querySelector('.muted')) el.innerHTML = '';
+  const div = document.createElement('div');
+  div.className = 'insight-card';
+  const t = new Date(insight.timestamp * 1000).toLocaleTimeString();
+  div.innerHTML = '<div class="insight-time">' + t +
+    ' <span class="insight-src">' + (insight.source||'') + '</span></div>' +
+    '<div class="insight-text">' + insight.text + '</div>';
+  el.prepend(div);
+  while (el.children.length > 10) el.removeChild(el.lastChild);
+}
+
+async function triggerAI() {
+  const btn = document.getElementById('aiGenerateBtn');
+  btn.disabled = true; btn.textContent = 'Generating...';
+  document.getElementById('aiStatus').textContent = 'Calling LLM...';
+  await fetch('/ai/generate', {method:'POST'});
+}
+
+async function onAIProviderChange() {
+  const provider = document.getElementById('aiProvider').value;
+  document.getElementById('aiBadge').textContent = provider;
+  await fetch('/ai/select', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({provider})});
+}
+
+// ── Message Flow Visualizer ───────────────────────────
+async function loadFlowLog() {
+  if (flowStarted) return;
+  flowStarted = true;
+  try {
+    const resp = await fetch('/dev/messages?limit=100');
+    const msgs = await resp.json();
+    msgs.forEach(addFlowEntry);
+  } catch(e) {}
+}
+
+function addFlowEntry(entry) {
+  flowEntries.push(entry);
+  if (flowEntries.length > 500) flowEntries.shift();
+
+  const stage = entry.stage || '?';
+  if (flowCounts[stage] !== undefined) {
+    flowCounts[stage]++;
+    const el = document.getElementById('flowCnt' + stage);
+    if (el) el.textContent = flowCounts[stage];
+  }
+
+  const log = document.getElementById('flowLog');
+  if (log.querySelector('.muted')) log.innerHTML = '';
+
+  const div = document.createElement('div');
+  div.className = 'flow-entry flow-active';
+  const ts = new Date(entry.timestamp * 1000).toLocaleTimeString();
+  const tagCls = 'flow-tag-' + stage.toLowerCase();
+  div.innerHTML = '<span class="flow-ts">' + ts + '</span>' +
+    '<span class="flow-tag ' + tagCls + '">' + stage + '</span>' +
+    '<span class="flow-detail">' + (entry.detail||'') + '</span>';
+  log.prepend(div);
+
+  while (log.children.length > 200) log.removeChild(log.lastChild);
+  document.getElementById('flowCount').textContent = flowEntries.length + ' messages';
+}
+
+function clearFlowLog() {
+  flowEntries = [];
+  Object.keys(flowCounts).forEach(k => flowCounts[k] = 0);
+  document.getElementById('flowLog').innerHTML = '<div class="muted" style="padding:20px;text-align:center">Log cleared</div>';
+  ['OEG','Book','Match','Trade','DB','CH'].forEach(s => {
+    const el = document.getElementById('flowCnt'+s);
+    if (el) el.textContent = '0';
+  });
+  document.getElementById('flowCount').textContent = '0 messages';
+}
+
+// ── Order actions ─────────────────────────────────────
 async function submitOrder(side) {
   const data = {
     symbolIdx: parseInt(document.getElementById('orderSymbol').value),

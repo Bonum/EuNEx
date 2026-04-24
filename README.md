@@ -27,7 +27,7 @@ ch_ai_trader.py          →   ClearingHouseActor        →   Clearing House (P
   AI strategies          →   AITraderActor             →   Trading obligations
 ```
 
-## Actor Topology (v0.7)
+## Actor Topology (v0.8)
 
 ```
  Core 0: OEGActor + FIXAcceptorActor     ← Order entry & FIX protocol
@@ -220,7 +220,9 @@ EuNEx/
 3. ~~FIX gateway~~ ✓ C++ FIXAcceptorActor + Python fallback
 4. ~~Clearing House~~ ✓ ClearingHouseActor + AITraderActor
 5. ~~Market simulation~~ ✓ Realistic AI trading + Dashboard auto-simulation
-6. **SBE encoding** — replace event structs with SBE-encoded messages
-7. **Master/Mirror failover** — implement full Recovery replay on Mirror node
-8. **Trading phases** — pre-open, uncrossing, continuous, close, TAL
-9. **Additional order types** — Stop, Pegged, Mid-Point, Iceberg
+6. ~~AI Analyst~~ ✓ Ollama/Groq/HuggingFace market commentary
+7. ~~Message Flow Visualizer~~ ✓ Developer pipeline tracing tool
+8. **SBE encoding** — replace event structs with SBE-encoded messages
+9. **Master/Mirror failover** — implement full Recovery replay on Mirror node
+10. **Trading phases** — pre-open, uncrossing, continuous, close, TAL
+11. **Additional order types** — Stop, Pegged, Mid-Point, Iceberg

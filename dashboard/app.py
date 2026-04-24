@@ -10,6 +10,8 @@ Provides:
   - Session controls (start/suspend/resume)
   - SSE streaming for live updates
   - Clearing House integration
+  - AI Analyst (Ollama/Groq/HuggingFace)
+  - Developer Message Flow Visualizer
 
 Run: python dashboard/app.py
 """
@@ -23,6 +25,7 @@ import sys
 import os
 import urllib.request
 import urllib.error
+from collections import deque
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -582,6 +585,274 @@ class MarketSimulator:
 simulator = MarketSimulator(engine)
 
 
+# ── AI Analyst ─────────────────────────────────────────────────────
+
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2:3b")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
+HF_TOKEN = os.environ.get("HF_TOKEN", "")
+HF_MODEL = os.environ.get("HF_MODEL", "Qwen/Qwen2.5-7B-Instruct")
+
+ai_insights = deque(maxlen=20)
+ai_provider = "auto"
+ai_model_override = None
+ai_generating = False
+
+
+def _build_market_prompt():
+    now_str = time.strftime("%H:%M:%S")
+    session = session_status.upper()
+
+    trade_lines = []
+    with state_lock:
+        by_sym = {}
+        for t in trades[-200:]:
+            sym = t.get("symbol", "?")
+            by_sym.setdefault(sym, []).append(t)
+        for sym, ts in sorted(by_sym.items()):
+            prices = [t["price"] for t in ts if t.get("price")]
+            vol = sum(t.get("quantity", 0) for t in ts)
+            if prices:
+                trade_lines.append(
+                    f"  {sym}: {len(ts)} trade(s), range {min(prices):.2f}-{max(prices):.2f}, "
+                    f"vol {vol}, last {prices[-1]:.2f}"
+                )
+
+        book_lines = []
+        for sid, snap in sorted(snapshots.items()):
+            bid = snap.get("bestBid", 0)
+            ask = snap.get("bestAsk", 0)
+            spread = ask - bid if bid > 0 and ask > 0 else 0
+            book_lines.append(
+                f"  {snap.get('symbol','?')}: Bid {bid:.2f} / Ask {ask:.2f} (spread {spread:.2f})"
+            )
+
+    trades_text = "\n".join(trade_lines) if trade_lines else "  No recent trades"
+    book_text = "\n".join(book_lines) if book_lines else "  No order book data"
+
+    return (
+        "You are a concise financial market analyst for the EuNEx simulated exchange "
+        "(Euronext Optiq architecture). "
+        f"Time: {now_str} | Session: {session}\n\n"
+        f"Recent trades:\n{trades_text}\n\n"
+        f"Order book:\n{book_text}\n\n"
+        "In 3-4 sentences: activity level, notable price moves, market sentiment. "
+        "Plain prose, no headers, no bullet points."
+    )
+
+
+def _try_ollama(prompt, model=None):
+    model = model or OLLAMA_MODEL
+    try:
+        data = json.dumps({
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+        }).encode()
+        req = urllib.request.Request(
+            f"{OLLAMA_HOST}/api/chat",
+            data=data,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=90) as resp:
+            result = json.loads(resp.read())
+            return result.get("message", {}).get("content", "")
+    except Exception:
+        return None
+
+
+def _try_groq(prompt, model=None):
+    if not GROQ_API_KEY:
+        return None
+    model = model or GROQ_MODEL
+    try:
+        data = json.dumps({
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 300,
+            "temperature": 0.7,
+        }).encode()
+        req = urllib.request.Request(
+            "https://api.groq.com/openai/v1/chat/completions",
+            data=data,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {GROQ_API_KEY}",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            result = json.loads(resp.read())
+            return result["choices"][0]["message"]["content"]
+    except Exception:
+        return None
+
+
+def _try_hf(prompt, model=None):
+    if not HF_TOKEN:
+        return None
+    model = model or HF_MODEL
+    try:
+        data = json.dumps({
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 300,
+            "temperature": 0.7,
+        }).encode()
+        req = urllib.request.Request(
+            "https://router.huggingface.co/v1/chat/completions",
+            data=data,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {HF_TOKEN}",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=90) as resp:
+            result = json.loads(resp.read())
+            return result["choices"][0]["message"]["content"]
+    except Exception:
+        return None
+
+
+def _call_llm(prompt):
+    provider = ai_provider
+    model = ai_model_override
+
+    if provider == "ollama":
+        return _try_ollama(prompt, model), "ollama"
+    elif provider == "groq":
+        return _try_groq(prompt, model), "groq"
+    elif provider == "hf":
+        return _try_hf(prompt, model), "hf"
+
+    for name, func in [("ollama", _try_ollama), ("groq", _try_groq), ("hf", _try_hf)]:
+        text = func(prompt, model)
+        if text:
+            return text, name
+    return None, None
+
+
+def _generate_insight():
+    global ai_generating
+    if ai_generating:
+        return
+    ai_generating = True
+    try:
+        prompt = _build_market_prompt()
+        text, source = _call_llm(prompt)
+        if text:
+            insight = {
+                "text": text.strip(),
+                "timestamp": time.time(),
+                "source": source or "unknown",
+            }
+            ai_insights.append(insight)
+            broadcast_event("ai_insight", insight)
+    finally:
+        ai_generating = False
+
+
+@app.route("/ai/generate", methods=["POST"])
+def ai_generate():
+    threading.Thread(target=_generate_insight, daemon=True).start()
+    return jsonify({"status": "generating"})
+
+
+@app.route("/ai/insights")
+def ai_insights_list():
+    return jsonify(list(ai_insights))
+
+
+@app.route("/ai/config")
+def ai_config():
+    return jsonify({
+        "provider": ai_provider,
+        "model": ai_model_override,
+        "providers": {
+            "auto": {"label": "Auto (fallback)", "available": True},
+            "ollama": {"label": f"Ollama ({OLLAMA_MODEL})", "available": bool(OLLAMA_HOST)},
+            "groq": {"label": f"Groq ({GROQ_MODEL})", "available": bool(GROQ_API_KEY)},
+            "hf": {"label": f"HuggingFace ({HF_MODEL})", "available": bool(HF_TOKEN)},
+        },
+    })
+
+
+@app.route("/ai/select", methods=["POST"])
+def ai_select():
+    global ai_provider, ai_model_override
+    d = request.json
+    ai_provider = d.get("provider", "auto")
+    ai_model_override = d.get("model") or None
+    return jsonify({"provider": ai_provider, "model": ai_model_override})
+
+
+# ── Developer Message Flow Log ─────────────────────────────────────
+
+message_log = deque(maxlen=500)
+
+
+def log_message(stage, detail):
+    entry = {
+        "timestamp": time.time(),
+        "stage": stage,
+        "detail": detail,
+    }
+    message_log.append(entry)
+    broadcast_event("msgflow", entry)
+
+
+@app.route("/dev/messages")
+def dev_messages():
+    limit = int(request.args.get("limit", 100))
+    items = list(message_log)[-limit:]
+    return jsonify(items)
+
+
+# Patch engine to log message flow
+_orig_submit = engine.submit_order
+
+def _traced_submit(symbol_id, side, order_type, price, quantity,
+                   tif="Day", source="dashboard", cl_ord_id=""):
+    sym_name = symbols.get(symbol_id, {}).get("name", "?")
+    log_message("OEG", f"NewOrder {sym_name} {side} {quantity}@{price:.2f} [{source}]")
+    result = _orig_submit(symbol_id, side, order_type, price, quantity, tif, source, cl_ord_id)
+    oid = result.get("orderId", "?")
+    status = result.get("status", "?")
+    log_message("Book", f"Order#{oid} → {status}")
+    if status == "Filled":
+        log_message("Match", f"Order#{oid} fully filled")
+    elif status == "PartiallyFilled":
+        log_message("Match", f"Order#{oid} partial fill, rem={result.get('remainingQty', '?')}")
+    return result
+
+engine.submit_order = _traced_submit
+
+_orig_cancel = engine.cancel_order
+
+def _traced_cancel(order_id):
+    log_message("OEG", f"CancelOrder #{order_id}")
+    result = _orig_cancel(order_id)
+    if result:
+        log_message("Book", f"Order#{order_id} cancelled")
+    return result
+
+engine.cancel_order = _traced_cancel
+
+# Patch trade saving to log trade and clearing steps
+_orig_broadcast = broadcast_event
+
+def _traced_broadcast(event_type, data):
+    if event_type == "trade":
+        tid = data.get("tradeId", "?")
+        sym = data.get("symbol", "?")
+        log_message("Trade", f"Trade#{tid} {sym} {data.get('quantity',0)}@{data.get('price',0):.2f}")
+        log_message("DB", f"Trade#{tid} persisted to SQLite")
+        log_message("CH", f"Trade#{tid} → clearing (buy#{data.get('buyOrderId','?')}, sell#{data.get('sellOrderId','?')})")
+    _orig_broadcast(event_type, data)
+
+broadcast_event = _traced_broadcast
+
+
 if __name__ == "__main__":
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     init_db(db_path)
@@ -590,4 +861,5 @@ if __name__ == "__main__":
     print(f"EuNEx Dashboard starting on http://localhost:{port}")
     print(f"  Database: {db_path}")
     print(f"  Simulation: every {SIM_INTERVAL}s, {SIM_ORDERS_PER_ROUND} orders/symbol/round")
+    print(f"  AI Analyst: provider={ai_provider} (Ollama={OLLAMA_HOST})")
     app.run(host="0.0.0.0", port=port, debug=True, threaded=True)
