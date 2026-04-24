@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EuNEx Developers Guide v0.5.0</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --blue:    #003399;
+    --navy:    #001a4d;
+    --gold:    #d4a843;
+    --teal:    #0891b2;
+    --green:   #059669;
+    --red:     #dc2626;
+    --orange:  #ea580c;
+    --purple:  #7c3aed;
+    --bg:      #f8fafc;
+    --card:    #ffffff;
+    --border:  #e2e8f0;
+    --text:    #1e293b;
+    --muted:   #64748b;
+    --code-bg: #f1f5f9;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    font-size: 15px;
+  }
+
+  /* ── Cover ─────────────────────────────────── */
+  .cover {
+    background: linear-gradient(135deg, var(--navy) 0%, var(--blue) 50%, #0055cc 100%);
+    color: white;
+    padding: 80px 40px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .cover::before {
+    content: '';
+    position: absolute;
+    top: -50%; left: -50%;
+    width: 200%; height: 200%;
+    background: repeating-linear-gradient(
+      45deg, transparent, transparent 40px,
+      rgba(255,255,255,0.015) 40px, rgba(255,255,255,0.015) 80px
+    );
+  }
+  .cover h1 { font-size: 48px; font-weight: 700; letter-spacing: -1px; position: relative; }
+  .cover .subtitle { font-size: 20px; font-weight: 300; margin-top: 12px; opacity: 0.9; position: relative; }
+  .cover .version {
+    display: inline-block;
+    background: var(--gold);
+    color: var(--navy);
+    padding: 6px 20px;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 14px;
+    margin-top: 24px;
+    position: relative;
+  }
+  .cover .meta { font-size: 13px; opacity: 0.6; margin-top: 16px; position: relative; }
+
+  /* ── Layout ────────────────────────────────── */
+  .container { max-width: 1100px; margin: 0 auto; padding: 40px 24px; }
+
+  /* ── TOC ────────────────────────────────────── */
+  .toc {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px 40px;
+    margin-bottom: 48px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .toc h2 { font-size: 22px; color: var(--blue); margin-bottom: 16px; }
+  .toc ol { columns: 2; column-gap: 40px; padding-left: 24px; }
+  .toc li { margin-bottom: 6px; break-inside: avoid; }
+  .toc a { color: var(--blue); text-decoration: none; font-weight: 500; }
+  .toc a:hover { text-decoration: underline; }
+
+  /* ── Sections ───────────────────────────────── */
+  section {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 40px;
+    margin-bottom: 32px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    page-break-inside: avoid;
+  }
+  section h2 {
+    font-size: 26px;
+    color: var(--navy);
+    border-bottom: 3px solid var(--gold);
+    padding-bottom: 10px;
+    margin-bottom: 24px;
+  }
+  section h3 {
+    font-size: 18px;
+    color: var(--blue);
+    margin: 28px 0 12px 0;
+    font-weight: 600;
+  }
+  section h3:first-of-type { margin-top: 0; }
+  p { margin-bottom: 14px; }
+  ul, ol { margin-bottom: 14px; padding-left: 24px; }
+  li { margin-bottom: 4px; }
+
+  /* ── Code ───────────────────────────────────── */
+  code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    background: var(--code-bg);
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  pre {
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 20px 24px;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin: 16px 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  pre code { background: none; padding: 0; color: inherit; }
+  .kw { color: #c084fc; }
+  .str { color: #86efac; }
+  .cmt { color: #64748b; }
+  .type { color: #67e8f9; }
+  .num { color: #fbbf24; }
+
+  /* ── Tables ─────────────────────────────────── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 14px;
+  }
+  th {
+    background: var(--navy);
+    color: white;
+    padding: 10px 16px;
+    text-align: left;
+    font-weight: 600;
+  }
+  td {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  tr:nth-child(even) td { background: #f8fafc; }
+
+  /* ── Diagrams ───────────────────────────────── */
+  .diagram {
+    margin: 24px 0;
+    overflow-x: auto;
+  }
+  .diagram svg {
+    display: block;
+    margin: 0 auto;
+  }
+
+  /* ── Badges / Tags ──────────────────────────── */
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-right: 6px;
+  }
+  .badge-blue   { background: #dbeafe; color: #1e40af; }
+  .badge-green  { background: #d1fae5; color: #065f46; }
+  .badge-orange { background: #ffedd5; color: #9a3412; }
+  .badge-purple { background: #ede9fe; color: #5b21b6; }
+  .badge-red    { background: #fee2e2; color: #991b1b; }
+  .badge-gold   { background: #fef3c7; color: #92400e; }
+
+  /* ── Principles cards ──────────────────────── */
+  .principles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin: 20px 0;
+  }
+  .principle {
+    background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
+    border-left: 4px solid var(--blue);
+    padding: 16px;
+    border-radius: 0 8px 8px 0;
+    font-size: 14px;
+  }
+  .principle strong { display: block; color: var(--navy); margin-bottom: 4px; }
+
+  /* ── Naming table ──────────────────────────── */
+  .naming-row {
+    display: grid;
+    grid-template-columns: 1fr 20px 1fr 1fr;
+    gap: 8px;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+  }
+  .naming-row.header { font-weight: 700; color: var(--navy); border-bottom: 2px solid var(--navy); }
+  .naming-arrow { color: var(--gold); font-weight: bold; text-align: center; }
+
+  /* ── Print ──────────────────────────────────── */
+  @media print {
+    body { background: white; font-size: 11pt; }
+    .cover { padding: 60px 40px; }
+    .cover h1 { font-size: 36pt; }
+    section { box-shadow: none; break-inside: avoid; page-break-inside: avoid; }
+    .toc ol { columns: 2; }
+    pre { font-size: 9pt; }
+    .diagram svg { max-width: 100%; height: auto; }
+  }
+
+  /* ── Footer ─────────────────────────────────── */
+  .footer {
+    text-align: center;
+    padding: 32px;
+    color: var(--muted);
+    font-size: 13px;
+    border-top: 1px solid var(--border);
+    margin-top: 40px;
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════ COVER ═══════ -->
+<div class="cover">
+  <h1>EuNEx Developers Guide</h1>
+  <div class="subtitle">Euronext Optiq-Modeled Exchange Simulator</div>
+  <div class="version">Version 0.5.0</div>
+  <div class="meta">C++20 Actor Architecture &bull; Price-Time Priority Matching &bull; FIX 4.4 &bull; Kafka Bus</div>
+</div>
+
+<div class="container">
+
+<!-- ═══════ TOC ═══════ -->
+<nav class="toc">
+  <h2>Table of Contents</h2>
+  <ol>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#architecture">Architecture</a></li>
+    <li><a href="#naming">Optiq Naming Alignment</a></li>
+    <li><a href="#topology">Actor Topology</a></li>
+    <li><a href="#dataflow">Data Flow</a></li>
+    <li><a href="#components">Core Components</a></li>
+    <li><a href="#events">Event System</a></li>
+    <li><a href="#orderbook">Order Book &amp; Matching</a></li>
+    <li><a href="#recovery">Recovery &amp; IACA</a></li>
+    <li><a href="#kafka">Kafka Bus</a></li>
+    <li><a href="#fix">FIX Protocol Gateway</a></li>
+    <li><a href="#clearing">Clearing House</a></li>
+    <li><a href="#ai">AI Trading Members</a></li>
+    <li><a href="#structure">Project Structure</a></li>
+    <li><a href="#build">Build &amp; Test</a></li>
+    <li><a href="#config">Configuration</a></li>
+    <li><a href="#extending">Extending EuNEx</a></li>
+  </ol>
+</nav>
+
+<!-- ═══════ 1. OVERVIEW ═══════ -->
+<section id="overview">
+  <h2>1. Overview</h2>
+  <p>EuNEx (Euronext Exchange Simulator) is a C++20 actor-based matching engine that mirrors the Euronext Optiq production architecture. It implements the full order lifecycle: entry, validation, matching, market data dissemination, trade clearing, and FIX protocol connectivity.</p>
+
+  <div class="diagram">
+    <svg width="780" height="200" viewBox="0 0 780 200">
+      <defs>
+        <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#003399"/>
+        </marker>
+        <linearGradient id="gBlue" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" style="stop-color:#dbeafe"/>
+          <stop offset="100%" style="stop-color:#bfdbfe"/>
+        </linearGradient>
+      </defs>
+      <rect x="10" y="60" width="120" height="80" rx="8" fill="url(#gBlue)" stroke="#3b82f6" stroke-width="2"/>
+      <text x="70" y="92" text-anchor="middle" font-family="Inter" font-size="13" font-weight="600" fill="#1e40af">FIX Clients</text>
+      <text x="70" y="112" text-anchor="middle" font-family="Inter" font-size="11" fill="#3b82f6">TCP :9001</text>
+
+      <line x1="130" y1="100" x2="170" y2="100" stroke="#003399" stroke-width="2" marker-end="url(#arrow)"/>
+
+      <rect x="175" y="60" width="100" height="80" rx="8" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+      <text x="225" y="92" text-anchor="middle" font-family="Inter" font-size="13" font-weight="600" fill="#92400e">OEG</text>
+      <text x="225" y="112" text-anchor="middle" font-family="Inter" font-size="11" fill="#b45309">Gateway</text>
+
+      <line x1="275" y1="100" x2="325" y2="100" stroke="#003399" stroke-width="2" marker-end="url(#arrow)"/>
+
+      <rect x="330" y="40" width="140" height="120" rx="8" fill="#d1fae5" stroke="#059669" stroke-width="2"/>
+      <text x="400" y="72" text-anchor="middle" font-family="Inter" font-size="13" font-weight="600" fill="#065f46">ME Core</text>
+      <text x="400" y="92" text-anchor="middle" font-family="Inter" font-size="11" fill="#059669">Book (per sym)</text>
+      <text x="400" y="112" text-anchor="middle" font-family="Inter" font-size="11" fill="#059669">Price-Time</text>
+      <text x="400" y="132" text-anchor="middle" font-family="Inter" font-size="11" fill="#059669">Priority</text>
+
+      <line x1="470" y1="80" x2="530" y2="80" stroke="#003399" stroke-width="2" marker-end="url(#arrow)"/>
+      <line x1="470" y1="120" x2="530" y2="140" stroke="#003399" stroke-width="2" marker-end="url(#arrow)"/>
+      <line x1="470" y1="100" x2="530" y2="180" stroke="#7c3aed" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#arrow)"/>
+
+      <rect x="535" y="50" width="110" height="60" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="2"/>
+      <text x="590" y="75" text-anchor="middle" font-family="Inter" font-size="13" font-weight="600" fill="#5b21b6">MDG</text>
+      <text x="590" y="95" text-anchor="middle" font-family="Inter" font-size="11" fill="#7c3aed">Market Data</text>
+
+      <rect x="535" y="120" width="110" height="60" rx="8" fill="#fee2e2" stroke="#dc2626" stroke-width="2"/>
+      <text x="590" y="145" text-anchor="middle" font-family="Inter" font-size="13" font-weight="600" fill="#991b1b">Clearing</text>
+      <text x="590" y="165" text-anchor="middle" font-family="Inter" font-size="11" fill="#dc2626">House</text>
+
+      <rect x="535" y="165" width="110" height="30" rx="6" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <text x="590" y="185" text-anchor="middle" font-family="Inter" font-size="11" font-weight="500" fill="#64748b">KafkaBus</text>
+
+      <rect x="670" y="60" width="100" height="80" rx="8" fill="#ffedd5" stroke="#ea580c" stroke-width="2"/>
+      <text x="720" y="92" text-anchor="middle" font-family="Inter" font-size="13" font-weight="600" fill="#9a3412">AI Traders</text>
+      <text x="720" y="112" text-anchor="middle" font-family="Inter" font-size="11" fill="#ea580c">x10 members</text>
+
+      <path d="M670,100 Q660,100 650,100 L280,100 Q275,100 275,95 L275,80" stroke="#ea580c" stroke-width="1.5" fill="none" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+
+      <!-- Exec Report back -->
+      <path d="M330,55 L225,55 L225,60" stroke="#059669" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+      <text x="277" y="48" text-anchor="middle" font-family="Inter" font-size="9" fill="#059669">ExecReport</text>
+    </svg>
+  </div>
+
+  <div class="principles">
+    <div class="principle"><strong>Actor Isolation</strong>No shared mutable state in the hot path</div>
+    <div class="principle"><strong>Lock-Free Pipes</strong>Event::Pipe for cross-actor comms</div>
+    <div class="principle"><strong>Fixed-Point Pricing</strong>8 decimals, PRICE_SCALE = 10<sup>8</sup></div>
+    <div class="principle"><strong>Price-Time Priority</strong>Multi-level sweep matching</div>
+    <div class="principle"><strong>Recovery Gating</strong>Master/Mirror for HA</div>
+  </div>
+</section>
+
+<!-- ═══════ 2. ARCHITECTURE ═══════ -->
+<section id="architecture">
+  <h2>2. Architecture</h2>
+  <h3>High-Level System Diagram</h3>
+
+  <div class="diagram">
+    <svg width="900" height="820" viewBox="0 0 900 820">
+      <defs>
+        <marker id="a2" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#003399"/>
+        </marker>
+        <marker id="a2g" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#059669"/>
+        </marker>
+        <marker id="a2o" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#ea580c"/>
+        </marker>
+      </defs>
+
+      <!-- External Clients -->
+      <rect x="50" y="10" width="800" height="50" rx="8" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.5"/>
+      <text x="450" y="32" text-anchor="middle" font-family="Inter" font-size="14" font-weight="600" fill="#475569">EXTERNAL CLIENTS</text>
+      <text x="450" y="48" text-anchor="middle" font-family="Inter" font-size="11" fill="#94a3b8">Browser / FIX 4.4 / Direct API / REST</text>
+
+      <!-- Arrows from clients -->
+      <line x1="200" y1="60" x2="200" y2="80" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a2)"/>
+      <text x="200" y="76" text-anchor="middle" font-family="Inter" font-size="9" fill="#94a3b8">HTTP :7860</text>
+      <line x1="700" y1="60" x2="700" y2="250" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#a2)"/>
+      <text x="715" y="155" font-family="Inter" font-size="9" fill="#3b82f6">TCP :9001</text>
+
+      <!-- PRESENTATION LAYER -->
+      <rect x="50" y="85" width="570" height="160" rx="10" fill="none" stroke="#7c3aed" stroke-width="2" stroke-dasharray="6,3"/>
+      <text x="70" y="102" font-family="Inter" font-size="11" font-weight="600" fill="#7c3aed">PRESENTATION LAYER (Python / nginx)</text>
+
+      <!-- nginx -->
+      <rect x="70" y="110" width="200" height="40" rx="6" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+      <text x="170" y="134" text-anchor="middle" font-family="Inter" font-size="12" font-weight="600" fill="#5b21b6">nginx :7860</text>
+
+      <!-- Dashboard -->
+      <rect x="70" y="165" width="160" height="65" rx="8" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.5"/>
+      <text x="150" y="185" text-anchor="middle" font-family="Inter" font-size="12" font-weight="600" fill="#1e40af">Dashboard :8090</text>
+      <text x="150" y="200" text-anchor="middle" font-family="Inter" font-size="10" fill="#3b82f6">Order Book, Charts, SSE</text>
+      <text x="150" y="215" text-anchor="middle" font-family="Inter" font-size="10" fill="#3b82f6">OHLCV, SQLite</text>
+
+      <!-- Clearing UI -->
+      <rect x="250" y="165" width="180" height="65" rx="8" fill="#fee2e2" stroke="#dc2626" stroke-width="1.5"/>
+      <text x="340" y="185" text-anchor="middle" font-family="Inter" font-size="12" font-weight="600" fill="#991b1b">Clearing House :8091</text>
+      <text x="340" y="200" text-anchor="middle" font-family="Inter" font-size="10" fill="#dc2626">Leaderboard, P&amp;L</text>
+      <text x="340" y="215" text-anchor="middle" font-family="Inter" font-size="10" fill="#dc2626">Holdings, Portfolios</text>
+
+      <!-- nginx arrows -->
+      <line x1="130" y1="150" x2="130" y2="165" stroke="#7c3aed" stroke-width="1" marker-end="url(#a2)"/>
+      <line x1="270" y1="150" x2="330" y2="165" stroke="#7c3aed" stroke-width="1" marker-end="url(#a2)"/>
+
+      <!-- Thread-safe reads label -->
+      <text x="150" y="243" text-anchor="middle" font-family="Inter" font-size="9" fill="#059669">getSnapshot()</text>
+      <text x="340" y="243" text-anchor="middle" font-family="Inter" font-size="9" fill="#059669">getLeaderboard()</text>
+      <line x1="150" y1="230" x2="150" y2="255" stroke="#059669" stroke-width="1.5" stroke-dasharray="3,3" marker-end="url(#a2g)"/>
+      <line x1="340" y1="230" x2="340" y2="255" stroke="#059669" stroke-width="1.5" stroke-dasharray="3,3" marker-end="url(#a2g)"/>
+
+      <!-- ═══ C++ ENGINE ═══ -->
+      <rect x="50" y="260" width="800" height="545" rx="10" fill="none" stroke="#003399" stroke-width="2.5"/>
+      <rect x="50" y="260" width="800" height="28" rx="10" fill="#003399"/>
+      <rect x="50" y="275" width="800" height="13" fill="#003399"/>
+      <text x="450" y="280" text-anchor="middle" font-family="Inter" font-size="13" font-weight="700" fill="white">C++ ACTOR ENGINE</text>
+
+      <!-- CORE 0 -->
+      <rect x="75" y="300" width="340" height="130" rx="8" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+      <text x="90" y="318" font-family="Inter" font-size="11" font-weight="700" fill="#92400e">CORE 0 — Gateway</text>
+
+      <rect x="90" y="328" width="140" height="90" rx="6" fill="#fffbeb" stroke="#f59e0b" stroke-width="1"/>
+      <text x="160" y="348" text-anchor="middle" font-family="Inter" font-size="12" font-weight="600" fill="#92400e">FIXAcceptorActor</text>
+      <text x="160" y="365" text-anchor="middle" font-family="Inter" font-size="10" fill="#b45309">TCP accept loop</text>
+      <text x="160" y="380" text-anchor="middle" font-family="Inter" font-size="10" fill="#b45309">FIX 4.4 parse/build</text>
+      <text x="160" y="395" text-anchor="middle" font-family="Inter" font-size="10" fill="#b45309">D, F, G → Events</text>
+
+      <rect x="245" y="328" width="155" height="90" rx="6" fill="#fffbeb" stroke="#f59e0b" stroke-width="1"/>
+      <text x="323" y="348" text-anchor="middle" font-family="Inter" font-size="12" font-weight="600" fill="#92400e">OEGActor</text>
+      <text x="323" y="365" text-anchor="middle" font-family="Inter" font-size="10" fill="#b45309">Session validation</text>
+      <text x="323" y="380" text-anchor="middle" font-family="Inter" font-size="10" fill="#b45309">Symbol routing</text>
+      <text x="323" y="395" text-anchor="middle" font-family="Inter" font-size="10" fill="#b45309">Exec report fanout</text>
+
+      <line x1="230" y1="370" x2="245" y2="370" stroke="#d97706" stroke-width="1.5" marker-end="url(#a2o)"/>
+
+      <!-- CORE 1 -->
+      <rect x="440" y="300" width="390" height="130" rx="8" fill="#d1fae5" stroke="#059669" stroke-width="1.5"/>
+      <text x="455" y="318" font-family="Inter" font-size="11" font-weight="700" fill="#065f46">CORE 1 — Matching Engine (per symbol)</text>
+
+      <rect x="455" y="328" width="82" height="55" rx="5" fill="#ecfdf5" stroke="#34d399" stroke-width="1"/>
+      <text x="496" y="348" text-anchor="middle" font-family="JetBrains Mono" font-size="10" font-weight="500" fill="#065f46">AAPL</text>
+      <text x="496" y="365" text-anchor="middle" font-family="Inter" font-size="9" fill="#059669">Book</text>
+
+      <rect x="545" y="328" width="82" height="55" rx="5" fill="#ecfdf5" stroke="#34d399" stroke-width="1"/>
+      <text x="586" y="348" text-anchor="middle" font-family="JetBrains Mono" font-size="10" font-weight="500" fill="#065f46">MSFT</text>
+      <text x="586" y="365" text-anchor="middle" font-family="Inter" font-size="9" fill="#059669">Book</text>
+
+      <rect x="635" y="328" width="82" height="55" rx="5" fill="#ecfdf5" stroke="#34d399" stroke-width="1"/>
+      <text x="676" y="348" text-anchor="middle" font-family="JetBrains Mono" font-size="10" font-weight="500" fill="#065f46">GOOGL</text>
+      <text x="676" y="365" text-anchor="middle" font-family="Inter" font-size="9" fill="#059669">Book</text>
+
+      <rect x="725" y="328" width="82" height="55" rx="5" fill="#ecfdf5" stroke="#34d399" stroke-width="1"/>
+      <text x="766" y="348" text-anchor="middle" font-family="JetBrains Mono" font-size="10" font-weight="500" fill="#065f46">EURO50</text>
+      <text x="766" y="365" text-anchor="middle" font-family="Inter" font-size="9" fill="#059669">Book</text>
+
+      <text x="635" y="408" text-anchor="middle" font-family="Inter" font-size="10" fill="#059669">KafkaBus* → Kafka topics &bull; No locks in matching path</text>
+
+      <!-- Arrow Core 0 → Core 1 -->
+      <line x1="400" y1="380" x2="440" y2="380" stroke="#003399" stroke-width="2" marker-end="url(#a2)"/>
+      <text x="420" y="373" text-anchor="middle" font-family="Inter" font-size="8" fill="#003399">Events</text>
+
+      <!-- CORE 2 -->
+      <rect x="75" y="450" width="340" height="110" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+      <text x="90" y="468" font-family="Inter" font-size="11" font-weight="700" fill="#5b21b6">CORE 2 — Market Data</text>
+
+      <rect x="90" y="478" width="310" height="70" rx="6" fill="#f5f3ff" stroke="#a78bfa" stroke-width="1"/>
+      <text x="245" y="498" text-anchor="middle" font-family="Inter" font-size="12" font-weight="600" fill="#5b21b6">MDGActor</text>
+      <text x="245" y="515" text-anchor="middle" font-family="Inter" font-size="10" fill="#7c3aed">BBO snapshots &bull; Trade history (200) &bull; Thread-safe reads</text>
+      <text x="245" y="530" text-anchor="middle" font-family="Inter" font-size="10" fill="#7c3aed">Trade count &bull; Volume &bull; Last price per symbol</text>
+
+      <!-- CORE 3 -->
+      <rect x="440" y="450" width="390" height="110" rx="8" fill="#fee2e2" stroke="#dc2626" stroke-width="1.5"/>
+      <text x="455" y="468" font-family="Inter" font-size="11" font-weight="700" fill="#991b1b">CORE 3 — Post-Trade &amp; AI</text>
+
+      <rect x="455" y="478" width="170" height="70" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+      <text x="540" y="498" text-anchor="middle" font-family="Inter" font-size="12" font-weight="600" fill="#991b1b">ClearingHouseActor</text>
+      <text x="540" y="515" text-anchor="middle" font-family="Inter" font-size="10" fill="#dc2626">10 members, capital, P&amp;L</text>
+      <text x="540" y="530" text-anchor="middle" font-family="Inter" font-size="10" fill="#dc2626">Session → Member map</text>
+
+      <rect x="640" y="478" width="170" height="70" rx="6" fill="#fff7ed" stroke="#fdba74" stroke-width="1"/>
+      <text x="725" y="498" text-anchor="middle" font-family="Inter" font-size="12" font-weight="600" fill="#9a3412">AITraderActor</text>
+      <text x="725" y="515" text-anchor="middle" font-family="Inter" font-size="10" fill="#ea580c">10 AI members</text>
+      <text x="725" y="530" text-anchor="middle" font-family="Inter" font-size="10" fill="#ea580c">Momentum / MeanRev / Rand</text>
+
+      <!-- Core 1 → Core 2 arrows -->
+      <line x1="550" y1="430" x2="300" y2="450" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#a2)"/>
+      <text x="400" y="440" font-family="Inter" font-size="9" fill="#7c3aed">TradeEvent + BookUpdate</text>
+
+      <!-- Core 1 → Core 3 arrows -->
+      <line x1="635" y1="430" x2="540" y2="478" stroke="#dc2626" stroke-width="1.5" marker-end="url(#a2)"/>
+      <text x="605" y="455" font-family="Inter" font-size="9" fill="#dc2626">TradeEvent</text>
+
+      <!-- ExecReport back -->
+      <path d="M550,430 L420,440 L280,430" stroke="#059669" stroke-width="1" fill="none" stroke-dasharray="4,3" marker-end="url(#a2g)"/>
+      <text x="400" y="427" font-family="Inter" font-size="8" fill="#059669">ExecReport → OEG</text>
+
+      <!-- KafkaBus -->
+      <rect x="75" y="580" width="755" height="55" rx="8" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="6,3"/>
+      <text x="90" y="600" font-family="Inter" font-size="11" font-weight="700" fill="#475569">KAFKA BUS (optional, Optiq KFK)</text>
+
+      <rect x="90" y="610" width="130" height="20" rx="4" fill="#dbeafe" stroke="#93c5fd" stroke-width="1"/>
+      <text x="155" y="624" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#1e40af">eunex.orders</text>
+
+      <rect x="230" y="610" width="130" height="20" rx="4" fill="#d1fae5" stroke="#6ee7b7" stroke-width="1"/>
+      <text x="295" y="624" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#065f46">eunex.trades</text>
+
+      <rect x="370" y="610" width="150" height="20" rx="4" fill="#ede9fe" stroke="#c4b5fd" stroke-width="1"/>
+      <text x="445" y="624" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#5b21b6">eunex.market-data</text>
+
+      <rect x="530" y="610" width="180" height="20" rx="4" fill="#fef3c7" stroke="#fcd34d" stroke-width="1"/>
+      <text x="620" y="624" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#92400e">eunex.recovery.fragments</text>
+
+      <!-- Arrow Core 1 → Kafka -->
+      <line x1="635" y1="430" x2="445" y2="580" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#a2)"/>
+
+      <!-- AI → OEG loop back -->
+      <path d="M725,548 L725,770 L245,770 L245,430" stroke="#ea580c" stroke-width="1.5" fill="none" stroke-dasharray="5,3" marker-end="url(#a2o)"/>
+      <text x="485" y="785" text-anchor="middle" font-family="Inter" font-size="9" fill="#ea580c">NewOrderEvent → OEG → ME</text>
+    </svg>
+  </div>
+</section>
+
+<!-- ═══════ 3. NAMING ═══════ -->
+<section id="naming">
+  <h2>3. Optiq Naming Alignment</h2>
+  <p>EuNEx components mirror Euronext Optiq production terminology:</p>
+  <table>
+    <tr><th>Optiq Production</th><th>EuNEx Class</th><th>File</th></tr>
+    <tr><td>OEActor (OE Gateway)</td><td><code>OEGActor</code></td><td><code>src/actors/OEGActor.hpp</code></td></tr>
+    <tr><td>LogicalCoreActor + Book</td><td><code>MECoreActor</code></td><td><code>src/actors/MECoreActor.hpp</code></td></tr>
+    <tr><td>Book (order book engine)</td><td><code>Book</code></td><td><code>src/common/Book.hpp</code></td></tr>
+    <tr><td>MDLimitLogicalCoreHandler</td><td><code>MDGActor</code></td><td><code>src/actors/MDGActor.hpp</code></td></tr>
+    <tr><td>OEG FIX Gateway</td><td><code>FIXAcceptorActor</code></td><td><code>src/actors/FIXAcceptorActor.hpp</code></td></tr>
+    <tr><td>Clearing House (PTB path)</td><td><code>ClearingHouseActor</code></td><td><code>src/actors/ClearingHouseActor.hpp</code></td></tr>
+    <tr><td>Member Trading Bots</td><td><code>AITraderActor</code></td><td><code>src/actors/AITraderActor.hpp</code></td></tr>
+    <tr><td>Kafka Bus (KFK)</td><td><code>KafkaBus</code></td><td><code>src/persistence/KafkaBus.hpp</code></td></tr>
+    <tr><td>RecoveryProxy</td><td><code>RecoveryProxy</code></td><td><code>src/recovery/RecoveryProxy.hpp</code></td></tr>
+    <tr><td>IacaAggregatorActor</td><td><code>IacaAggregator</code></td><td><code>src/iaca/IacaAggregator.hpp</code></td></tr>
+  </table>
+  <p><span class="badge badge-blue">OEG</span> Order Entry Gateway &mdash;
+     <span class="badge badge-green">ME</span> Matching Engine &mdash;
+     <span class="badge badge-purple">MDG</span> Market Data Gateway &mdash;
+     <span class="badge badge-gold">KFK</span> Kafka Bus</p>
+</section>
+
+<!-- ═══════ 4. TOPOLOGY ═══════ -->
+<section id="topology">
+  <h2>4. Actor Topology</h2>
+  <h3>Core Affinity Layout</h3>
+
+  <div class="diagram">
+    <svg width="860" height="280" viewBox="0 0 860 280">
+      <!-- Core 0 -->
+      <rect x="10" y="10" width="200" height="120" rx="8" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+      <text x="20" y="30" font-family="Inter" font-size="11" font-weight="700" fill="#92400e">CPU Core 0</text>
+      <text x="20" y="50" font-family="JetBrains Mono" font-size="11" fill="#92400e">OEGActor</text>
+      <text x="20" y="68" font-family="Inter" font-size="10" fill="#b45309">  Symbol → Book routing</text>
+      <text x="20" y="86" font-family="JetBrains Mono" font-size="11" fill="#92400e">FIXAcceptorActor</text>
+      <text x="20" y="104" font-family="Inter" font-size="10" fill="#b45309">  TCP :9001, FIX 4.4</text>
+
+      <!-- Core 1 -->
+      <rect x="230" y="10" width="200" height="120" rx="8" fill="#d1fae5" stroke="#059669" stroke-width="2"/>
+      <text x="240" y="30" font-family="Inter" font-size="11" font-weight="700" fill="#065f46">CPU Core 1</text>
+      <text x="240" y="50" font-family="JetBrains Mono" font-size="10" fill="#065f46">MECoreActor (AAPL)</text>
+      <text x="240" y="66" font-family="JetBrains Mono" font-size="10" fill="#065f46">MECoreActor (MSFT)</text>
+      <text x="240" y="82" font-family="JetBrains Mono" font-size="10" fill="#065f46">MECoreActor (GOOGL)</text>
+      <text x="240" y="98" font-family="JetBrains Mono" font-size="10" fill="#065f46">MECoreActor (EURO50)</text>
+      <text x="240" y="118" font-family="Inter" font-size="9" fill="#059669">KafkaBus* &bull; No locks</text>
+
+      <!-- Core 2 -->
+      <rect x="10" y="148" width="200" height="120" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="2"/>
+      <text x="20" y="168" font-family="Inter" font-size="11" font-weight="700" fill="#5b21b6">CPU Core 2</text>
+      <text x="20" y="188" font-family="JetBrains Mono" font-size="11" fill="#5b21b6">MDGActor</text>
+      <text x="20" y="206" font-family="Inter" font-size="10" fill="#7c3aed">  BBO per symbol</text>
+      <text x="20" y="222" font-family="Inter" font-size="10" fill="#7c3aed">  Trade history</text>
+      <text x="20" y="238" font-family="Inter" font-size="10" fill="#7c3aed">  ← Dashboard reads</text>
+
+      <!-- Core 3 -->
+      <rect x="230" y="148" width="200" height="120" rx="8" fill="#fee2e2" stroke="#dc2626" stroke-width="2"/>
+      <text x="240" y="168" font-family="Inter" font-size="11" font-weight="700" fill="#991b1b">CPU Core 3</text>
+      <text x="240" y="188" font-family="JetBrains Mono" font-size="11" fill="#991b1b">ClearingHouseActor</text>
+      <text x="240" y="206" font-family="Inter" font-size="10" fill="#dc2626">  10 members, P&amp;L</text>
+      <text x="240" y="226" font-family="JetBrains Mono" font-size="11" fill="#9a3412">AITraderActor</text>
+      <text x="240" y="244" font-family="Inter" font-size="10" fill="#ea580c">  Momentum / MeanRev / Rand</text>
+
+      <!-- Connections legend -->
+      <rect x="460" y="10" width="390" height="258" rx="8" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1.5"/>
+      <text x="475" y="32" font-family="Inter" font-size="13" font-weight="700" fill="#1e293b">Event::Pipe Connections</text>
+
+      <line x1="475" y1="52" x2="530" y2="52" stroke="#d97706" stroke-width="2"/>
+      <text x="540" y="56" font-family="Inter" font-size="10" fill="#475569">FIXAcceptor → OEG → MECoreActor</text>
+
+      <line x1="475" y1="76" x2="530" y2="76" stroke="#059669" stroke-width="2"/>
+      <text x="540" y="80" font-family="Inter" font-size="10" fill="#475569">MECore → OEG (ExecReport fanout)</text>
+
+      <line x1="475" y1="100" x2="530" y2="100" stroke="#7c3aed" stroke-width="2"/>
+      <text x="540" y="104" font-family="Inter" font-size="10" fill="#475569">MECore → MDGActor (Trade + BookUpdate)</text>
+
+      <line x1="475" y1="124" x2="530" y2="124" stroke="#dc2626" stroke-width="2"/>
+      <text x="540" y="128" font-family="Inter" font-size="10" fill="#475569">MECore → ClearingHouse (Trade)</text>
+
+      <line x1="475" y1="148" x2="530" y2="148" stroke="#ea580c" stroke-width="2"/>
+      <text x="540" y="152" font-family="Inter" font-size="10" fill="#475569">AITrader → OEG (NewOrderEvent)</text>
+
+      <line x1="475" y1="172" x2="530" y2="172" stroke="#94a3b8" stroke-width="2" stroke-dasharray="4,3"/>
+      <text x="540" y="176" font-family="Inter" font-size="10" fill="#475569">MECore → KafkaBus (if enabled)</text>
+
+      <line x1="475" y1="196" x2="530" y2="196" stroke="#059669" stroke-width="2" stroke-dasharray="3,3"/>
+      <text x="540" y="200" font-family="Inter" font-size="10" fill="#475569">Dashboard → MDGActor (thread-safe read)</text>
+
+      <line x1="475" y1="220" x2="530" y2="220" stroke="#dc2626" stroke-width="2" stroke-dasharray="3,3"/>
+      <text x="540" y="224" font-family="Inter" font-size="10" fill="#475569">CH UI → ClearingHouseActor (thread-safe)</text>
+    </svg>
+  </div>
+</section>
+
+<!-- ═══════ 5. DATA FLOW ═══════ -->
+<section id="dataflow">
+  <h2>5. Data Flow</h2>
+  <h3>Order Lifecycle (New Limit Order)</h3>
+
+  <div class="diagram">
+    <svg width="860" height="480" viewBox="0 0 860 480">
+      <defs>
+        <marker id="af" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#003399"/>
+        </marker>
+      </defs>
+
+      <!-- Step 1: Client → FIX -->
+      <rect x="10" y="30" width="100" height="50" rx="6" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.5"/>
+      <text x="60" y="52" text-anchor="middle" font-family="Inter" font-size="11" font-weight="600" fill="#475569">Client</text>
+      <text x="60" y="67" text-anchor="middle" font-family="Inter" font-size="9" fill="#94a3b8">(FIX 4.4)</text>
+
+      <line x1="110" y1="55" x2="155" y2="55" stroke="#003399" stroke-width="2" marker-end="url(#af)"/>
+      <text x="133" y="48" text-anchor="middle" font-family="Inter" font-size="8" fill="#003399">35=D</text>
+
+      <!-- Step 2: FIXAcceptor -->
+      <rect x="160" y="20" width="140" height="70" rx="6" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.5"/>
+      <text x="230" y="42" text-anchor="middle" font-family="Inter" font-size="11" font-weight="600" fill="#1e40af">FIXAcceptorActor</text>
+      <text x="230" y="58" text-anchor="middle" font-family="Inter" font-size="9" fill="#3b82f6">Parse FIX tags</text>
+      <text x="230" y="72" text-anchor="middle" font-family="Inter" font-size="9" fill="#3b82f6">Map symbol → idx</text>
+
+      <line x1="300" y1="55" x2="345" y2="55" stroke="#003399" stroke-width="2" marker-end="url(#af)"/>
+
+      <!-- Step 3: OEG -->
+      <rect x="350" y="20" width="140" height="70" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+      <text x="420" y="42" text-anchor="middle" font-family="Inter" font-size="11" font-weight="600" fill="#92400e">OEGActor</text>
+      <text x="420" y="58" text-anchor="middle" font-family="Inter" font-size="9" fill="#b45309">Route by symbolIdx</text>
+      <text x="420" y="72" text-anchor="middle" font-family="Inter" font-size="9" fill="#b45309">Validate session</text>
+
+      <line x1="420" y1="90" x2="420" y2="120" stroke="#003399" stroke-width="2" marker-end="url(#af)"/>
+      <text x="450" y="110" font-family="Inter" font-size="8" fill="#003399">NewOrderEvent</text>
+
+      <!-- Step 4: MECoreActor -->
+      <rect x="250" y="125" width="340" height="200" rx="8" fill="#d1fae5" stroke="#059669" stroke-width="2"/>
+      <text x="420" y="148" text-anchor="middle" font-family="Inter" font-size="13" font-weight="700" fill="#065f46">MECoreActor</text>
+
+      <text x="270" y="172" font-family="Inter" font-size="11" fill="#065f46">1. KafkaBus.publishOrder() → eunex.orders</text>
+      <text x="270" y="190" font-family="Inter" font-size="11" fill="#065f46">2. RecoveryProxy.cause() — persist fragment</text>
+      <text x="270" y="208" font-family="Inter" font-size="11" fill="#065f46">3. Book.newOrder() — price-time matching</text>
+      <text x="270" y="226" font-family="Inter" font-size="11" fill="#065f46">4. For each fill:</text>
+      <text x="290" y="242" font-family="Inter" font-size="10" fill="#059669">a. TradeEvent → MDGActor</text>
+      <text x="290" y="256" font-family="Inter" font-size="10" fill="#059669">b. TradeEvent → ClearingHouseActor</text>
+      <text x="290" y="270" font-family="Inter" font-size="10" fill="#059669">c. KafkaBus.publishTrade() → eunex.trades</text>
+      <text x="270" y="288" font-family="Inter" font-size="11" fill="#065f46">5. ExecReportEvent → OEGActor</text>
+      <text x="270" y="306" font-family="Inter" font-size="11" fill="#065f46">6. BookUpdateEvent → MDGActor</text>
+
+      <rect x="430" y="158" width="140" height="16" rx="3" fill="#ecfdf5" stroke="#6ee7b7" stroke-width="0.5"/>
+      <text x="500" y="170" text-anchor="middle" font-family="Inter" font-size="8" fill="#94a3b8">* if KAFKA_BROKERS set</text>
+
+      <!-- MECore → OEG (ExecReport) -->
+      <line x1="250" y1="290" x2="150" y2="290" stroke="#003399" stroke-width="1.5" marker-end="url(#af)"/>
+      <text x="200" y="283" text-anchor="middle" font-family="Inter" font-size="8" fill="#003399">ExecReport</text>
+
+      <!-- OEG box (fanout) -->
+      <rect x="60" y="268" width="90" height="60" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+      <text x="105" y="290" text-anchor="middle" font-family="Inter" font-size="10" font-weight="600" fill="#92400e">OEGActor</text>
+      <text x="105" y="305" text-anchor="middle" font-family="Inter" font-size="9" fill="#b45309">fanout</text>
+      <text x="105" y="318" text-anchor="middle" font-family="Inter" font-size="9" fill="#b45309">→ FIX, AI</text>
+
+      <!-- MECore → Clearing -->
+      <line x1="590" y1="260" x2="700" y2="260" stroke="#dc2626" stroke-width="1.5" marker-end="url(#af)"/>
+      <rect x="700" y="240" width="140" height="55" rx="6" fill="#fee2e2" stroke="#dc2626" stroke-width="1.5"/>
+      <text x="770" y="262" text-anchor="middle" font-family="Inter" font-size="10" font-weight="600" fill="#991b1b">ClearingHouseActor</text>
+      <text x="770" y="278" text-anchor="middle" font-family="Inter" font-size="9" fill="#dc2626">session → member</text>
+      <text x="770" y="291" text-anchor="middle" font-family="Inter" font-size="9" fill="#dc2626">capital, holdings</text>
+
+      <!-- OEG → Client (ExecReport back) -->
+      <line x1="105" y1="328" x2="105" y2="370" stroke="#003399" stroke-width="1.5" marker-end="url(#af)"/>
+      <text x="130" y="350" font-family="Inter" font-size="8" fill="#003399">FIX 35=8</text>
+      <rect x="55" y="375" width="100" height="40" rx="6" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.5"/>
+      <text x="105" y="397" text-anchor="middle" font-family="Inter" font-size="10" font-weight="600" fill="#475569">Client</text>
+      <text x="105" y="410" text-anchor="middle" font-family="Inter" font-size="9" fill="#94a3b8">receives fill</text>
+
+      <!-- MECore → MDG -->
+      <line x1="420" y1="325" x2="420" y2="370" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#af)"/>
+      <text x="440" y="350" font-family="Inter" font-size="8" fill="#7c3aed">Trade + BookUpdate</text>
+
+      <!-- MDG → Dashboard/CH UI -->
+      <rect x="330" y="375" width="180" height="45" rx="6" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+      <text x="420" y="395" text-anchor="middle" font-family="Inter" font-size="11" font-weight="600" fill="#5b21b6">MDGActor</text>
+      <text x="420" y="410" text-anchor="middle" font-family="Inter" font-size="9" fill="#7c3aed">snapshots &bull; history</text>
+
+      <line x1="350" y1="420" x2="300" y2="450" stroke="#059669" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#af)"/>
+      <line x1="490" y1="420" x2="560" y2="450" stroke="#059669" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#af)"/>
+
+      <rect x="220" y="450" width="120" height="25" rx="4" fill="#dbeafe" stroke="#93c5fd" stroke-width="1"/>
+      <text x="280" y="467" text-anchor="middle" font-family="Inter" font-size="10" fill="#1e40af">Dashboard :8090</text>
+
+      <rect x="520" y="450" width="140" height="25" rx="4" fill="#fee2e2" stroke="#fca5a5" stroke-width="1"/>
+      <text x="590" y="467" text-anchor="middle" font-family="Inter" font-size="10" fill="#991b1b">Clearing UI :8091</text>
+    </svg>
+  </div>
+</section>
+
+<!-- ═══════ 6. COMPONENTS ═══════ -->
+<section id="components">
+  <h2>6. Core Components</h2>
+
+  <h3>6.1 SimplxShim &mdash; Actor Framework</h3>
+  <p>The actor engine emulates the <a href="https://github.com/Tredzone/simplx">Tredzone Simplx</a> framework API:</p>
+  <table>
+    <tr><th>Simplx Concept</th><th>EuNEx Implementation</th></tr>
+    <tr><td><code>Actor</code></td><td>Base class with event handlers, mailbox</td></tr>
+    <tr><td><code>Event::Pipe</code></td><td>Lock-free cross-actor channel</td></tr>
+    <tr><td><code>ActorId</code></td><td><code>{id: uint64, coreId: uint8}</code></td></tr>
+    <tr><td><code>Engine</code></td><td>Multi-threaded scheduler with core affinity</td></tr>
+    <tr><td><code>Callback</code></td><td>Timer-like periodic invocation</td></tr>
+    <tr><td><code>AsyncService</code></td><td>Service locator pattern</td></tr>
+  </table>
+
+  <h3>6.2 Types</h3>
+  <pre><code><span class="type">Price_t</span>       = <span class="type">int64_t</span>     <span class="cmt">// Fixed-point, PRICE_SCALE = 100'000'000</span>
+<span class="type">Quantity_t</span>    = <span class="type">uint64_t</span>
+<span class="type">OrderId_t</span>     = <span class="type">uint64_t</span>    <span class="cmt">// Exchange-assigned order ID</span>
+<span class="type">ClOrdId_t</span>     = <span class="type">uint64_t</span>    <span class="cmt">// Client order ID</span>
+<span class="type">SymbolIndex_t</span> = <span class="type">uint32_t</span>    <span class="cmt">// Instrument identifier</span>
+<span class="type">SessionId_t</span>   = <span class="type">uint16_t</span>    <span class="cmt">// Client session identifier</span>
+<span class="type">MemberId_t</span>    = <span class="type">uint16_t</span>    <span class="cmt">// Clearing member identifier</span></code></pre>
+
+  <h3>6.3 Price Conversion</h3>
+  <pre><code><span class="type">Price_t</span> px = toFixedPrice(<span class="num">150.25</span>);  <span class="cmt">// → 15'025'000'000</span>
+<span class="type">double</span>  d  = toDouble(px);          <span class="cmt">// → 150.25</span></code></pre>
+</section>
+
+<!-- ═══════ 7. EVENTS ═══════ -->
+<section id="events">
+  <h2>7. Event System</h2>
+  <p>Events flow between actors via <code>Event::Pipe</code>. Each event struct inherits <code>tredzone::Actor::Event</code>:</p>
+  <table>
+    <tr><th>Event</th><th>Direction</th><th>Purpose</th></tr>
+    <tr><td><code>NewOrderEvent</code></td><td>OEG → ME</td><td>New order submission</td></tr>
+    <tr><td><code>CancelOrderEvent</code></td><td>OEG → ME</td><td>Cancel resting order</td></tr>
+    <tr><td><code>ModifyOrderEvent</code></td><td>OEG → ME</td><td>Modify price/qty (cancel-replace)</td></tr>
+    <tr><td><code>ExecReportEvent</code></td><td>ME → OEG</td><td>Ack, fill, partial, reject</td></tr>
+    <tr><td><code>TradeEvent</code></td><td>ME → MDG/CH</td><td>Trade execution</td></tr>
+    <tr><td><code>BookUpdateEvent</code></td><td>ME → MDG/AI</td><td>BBO + depth snapshot</td></tr>
+    <tr><td><code>RecoveryFragmentEvent</code></td><td>ME → Persist</td><td>Recovery persistence</td></tr>
+  </table>
+
+  <h3>Usage Pattern</h3>
+  <pre><code><span class="cmt">// In MECoreActor constructor:</span>
+oePipe_ = Event::Pipe(*<span class="kw">this</span>, oeGatewayId);
+mdPipe_ = Event::Pipe(*<span class="kw">this</span>, marketDataId);
+
+<span class="cmt">// Pushing an event (lock-free):</span>
+oePipe_.push&lt;ExecReportEvent&gt;(report, sessionId);
+mdPipe_.push&lt;TradeEvent&gt;(trade);</code></pre>
+</section>
+
+<!-- ═══════ 8. ORDER BOOK ═══════ -->
+<section id="orderbook">
+  <h2>8. Order Book &amp; Matching</h2>
+
+  <div class="diagram">
+    <svg width="700" height="230" viewBox="0 0 700 230">
+      <!-- BIDS -->
+      <text x="160" y="18" text-anchor="middle" font-family="Inter" font-size="14" font-weight="700" fill="#059669">BIDS (descending)</text>
+      <rect x="30" y="28" width="260" height="30" rx="4" fill="#065f46"/>
+      <text x="80" y="48" text-anchor="middle" font-family="Inter" font-size="11" font-weight="600" fill="white">Price</text>
+      <text x="200" y="48" text-anchor="middle" font-family="Inter" font-size="11" font-weight="600" fill="white">Orders (FIFO)</text>
+
+      <rect x="30" y="60" width="260" height="28" rx="0" fill="#ecfdf5" stroke="#d1fae5" stroke-width="1"/>
+      <text x="80" y="79" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#065f46">155.00</text>
+      <rect x="140" y="65" width="40" height="18" rx="3" fill="#059669"/>
+      <text x="160" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="white">100</text>
+      <rect x="185" y="65" width="40" height="18" rx="3" fill="#059669"/>
+      <text x="205" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="white">50</text>
+
+      <rect x="30" y="90" width="260" height="28" rx="0" fill="white" stroke="#d1fae5" stroke-width="1"/>
+      <text x="80" y="109" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#065f46">154.50</text>
+      <rect x="140" y="95" width="40" height="18" rx="3" fill="#059669"/>
+      <text x="160" y="108" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="white">200</text>
+
+      <rect x="30" y="120" width="260" height="28" rx="0" fill="#ecfdf5" stroke="#d1fae5" stroke-width="1"/>
+      <text x="80" y="139" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#065f46">154.00</text>
+      <rect x="140" y="125" width="40" height="18" rx="3" fill="#059669"/>
+      <text x="160" y="138" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="white">75</text>
+      <rect x="185" y="125" width="40" height="18" rx="3" fill="#059669"/>
+      <text x="205" y="138" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="white">100</text>
+
+      <!-- ASKS -->
+      <text x="540" y="18" text-anchor="middle" font-family="Inter" font-size="14" font-weight="700" fill="#dc2626">ASKS (ascending)</text>
+      <rect x="410" y="28" width="260" height="30" rx="4" fill="#991b1b"/>
+      <text x="460" y="48" text-anchor="middle" font-family="Inter" font-size="11" font-weight="600" fill="white">Price</text>
+      <text x="580" y="48" text-anchor="middle" font-family="Inter" font-size="11" font-weight="600" fill="white">Orders (FIFO)</text>
+
+      <rect x="410" y="60" width="260" height="28" rx="0" fill="#fef2f2" stroke="#fee2e2" stroke-width="1"/>
+      <text x="460" y="79" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#991b1b">157.00</text>
+      <rect x="520" y="65" width="40" height="18" rx="3" fill="#dc2626"/>
+      <text x="540" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="white">200</text>
+
+      <rect x="410" y="90" width="260" height="28" rx="0" fill="white" stroke="#fee2e2" stroke-width="1"/>
+      <text x="460" y="109" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#991b1b">158.00</text>
+      <rect x="520" y="95" width="40" height="18" rx="3" fill="#dc2626"/>
+      <text x="540" y="108" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="white">100</text>
+      <rect x="565" y="95" width="40" height="18" rx="3" fill="#dc2626"/>
+      <text x="585" y="108" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="white">150</text>
+
+      <rect x="410" y="120" width="260" height="28" rx="0" fill="#fef2f2" stroke="#fee2e2" stroke-width="1"/>
+      <text x="460" y="139" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#991b1b">159.00</text>
+      <rect x="520" y="125" width="40" height="18" rx="3" fill="#dc2626"/>
+      <text x="540" y="138" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="white">300</text>
+
+      <!-- Spread indicator -->
+      <rect x="305" y="65" width="90" height="50" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+      <text x="350" y="83" text-anchor="middle" font-family="Inter" font-size="10" font-weight="600" fill="#92400e">SPREAD</text>
+      <text x="350" y="100" text-anchor="middle" font-family="JetBrains Mono" font-size="12" font-weight="700" fill="#92400e">2.00</text>
+
+      <!-- Data structure labels -->
+      <text x="160" y="185" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748b">std::map&lt;Price_t,</text>
+      <text x="160" y="200" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748b">  vector&lt;Order&gt;,</text>
+      <text x="160" y="215" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748b">  std::greater&lt;&gt;&gt;</text>
+
+      <text x="540" y="185" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748b">std::map&lt;Price_t,</text>
+      <text x="540" y="200" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748b">  vector&lt;Order&gt;,</text>
+      <text x="540" y="215" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748b">  std::less&lt;&gt;&gt;</text>
+    </svg>
+  </div>
+
+  <h3>Order Types &amp; TIF</h3>
+  <table>
+    <tr><th>Order Type</th><th>Behavior</th></tr>
+    <tr><td><span class="badge badge-green">Limit</span></td><td>Rests on book if no match; price-time priority</td></tr>
+    <tr><td><span class="badge badge-red">Market</span></td><td>Sweeps all levels; never rests (IOC behavior)</td></tr>
+    <tr><td><span class="badge badge-orange">StopMarket</span></td><td>Parks until trigger price hit, converts to Market</td></tr>
+    <tr><td><span class="badge badge-purple">StopLimit</span></td><td>Parks until trigger price hit, converts to Limit</td></tr>
+  </table>
+  <table>
+    <tr><th>Time-in-Force</th><th>Behavior</th></tr>
+    <tr><td><code>Day</code></td><td>Rests until end of session</td></tr>
+    <tr><td><code>IOC</code></td><td>Fill what's available, cancel remainder</td></tr>
+    <tr><td><code>FOK</code></td><td>Fill all or reject entirely</td></tr>
+  </table>
+</section>
+
+<!-- ═══════ 9. RECOVERY ═══════ -->
+<section id="recovery">
+  <h2>9. Recovery &amp; IACA</h2>
+  <h3>RecoveryProxy</h3>
+  <p>Master/Mirror gating for high availability. <code>cause()</code> always executes (both sides). <code>effect()</code> only on Master. <code>recoveryEffect()</code> only on Mirror during failover replay.</p>
+
+  <h3>IACA Fragment Chains</h3>
+  <p>Fragments form a tree. Completion check: <code>sum(nextCount) == total_fragments - 1</code>. On completion, the handler fires and generates IA SBE messages.</p>
+</section>
+
+<!-- ═══════ 10. KAFKA ═══════ -->
+<section id="kafka">
+  <h2>10. Kafka Bus</h2>
+  <p>The Kafka Bus (<code>src/persistence/KafkaBus.hpp</code>) mirrors the Optiq KFK that connects ME to downstream consumers: MDG, PTB, Clearing, IDS, SATURN.</p>
+
+  <h3>Topics</h3>
+  <table>
+    <tr><th>Topic</th><th>Content</th><th>Key</th></tr>
+    <tr><td><code>eunex.orders</code></td><td>Raw Order structs</td><td>symbolIdx</td></tr>
+    <tr><td><code>eunex.trades</code></td><td>Trade structs</td><td>symbolIdx</td></tr>
+    <tr><td><code>eunex.market-data</code></td><td>BBO snapshots</td><td>symbolIdx</td></tr>
+    <tr><td><code>eunex.recovery.fragments</code></td><td>Recovery fragments</td><td>originId:originKey</td></tr>
+    <tr><td><code>eunex.control</code></td><td>Control messages</td><td>(reserved)</td></tr>
+  </table>
+
+  <h3>Compile-Time Toggle</h3>
+  <pre><code>cmake .. -DEUNEX_USE_KAFKA=ON    <span class="cmt"># requires librdkafka-dev</span>
+cmake .. -DEUNEX_USE_KAFKA=OFF   <span class="cmt"># no-op stub (default)</span></code></pre>
+
+  <h3>Runtime</h3>
+  <pre><code><span class="kw">export</span> EUNEX_KAFKA_BROKERS=kafka:<span class="num">9092</span>
+./eunex_me</code></pre>
+
+  <h3>Docker Deployment</h3>
+  <p><code>docker/docker-compose.yml</code> runs Kafka in KRaft mode (no ZooKeeper) using <code>apache/kafka:3.9.0</code>, creates all topics via <code>kafka-init</code>, then starts the engine.</p>
+  <pre><code><span class="kw">cd</span> docker
+docker compose up --build</code></pre>
+</section>
+
+<!-- ═══════ 11. FIX ═══════ -->
+<section id="fix">
+  <h2>11. FIX Protocol Gateway</h2>
+  <p>TCP server on port 9001 with per-client receive threads. Parses FIX 4.4 messages and routes to the actor engine via <code>Event::Pipe</code>.</p>
+  <table>
+    <tr><th>Tag 35</th><th>Message</th><th>Direction</th></tr>
+    <tr><td><code>A</code></td><td>Logon</td><td><span class="badge badge-blue">Inbound</span></td></tr>
+    <tr><td><code>5</code></td><td>Logout</td><td><span class="badge badge-blue">Inbound</span></td></tr>
+    <tr><td><code>0</code></td><td>Heartbeat</td><td><span class="badge badge-blue">Inbound</span></td></tr>
+    <tr><td><code>D</code></td><td>NewOrderSingle</td><td><span class="badge badge-blue">Inbound</span></td></tr>
+    <tr><td><code>F</code></td><td>OrderCancelRequest</td><td><span class="badge badge-blue">Inbound</span></td></tr>
+    <tr><td><code>G</code></td><td>OrderCancelReplaceRequest</td><td><span class="badge badge-blue">Inbound</span></td></tr>
+    <tr><td><code>8</code></td><td>ExecutionReport</td><td><span class="badge badge-green">Outbound</span></td></tr>
+  </table>
+  <h3>Symbol Mapping</h3>
+  <table>
+    <tr><th>Symbol String</th><th>SymbolIndex_t</th></tr>
+    <tr><td>AAPL</td><td>1</td></tr>
+    <tr><td>MSFT</td><td>2</td></tr>
+    <tr><td>GOOGL</td><td>3</td></tr>
+    <tr><td>EURO50</td><td>4</td></tr>
+  </table>
+</section>
+
+<!-- ═══════ 12. CLEARING ═══════ -->
+<section id="clearing">
+  <h2>12. Clearing House</h2>
+  <p>Receives <code>TradeEvent</code> from MECoreActor. Maps sessions to 10 clearing members. Tracks capital, holdings per symbol, P&amp;L, and trade counts.</p>
+  <table>
+    <tr><th>Session Range</th><th>Members</th><th>Source</th></tr>
+    <tr><td>100-109</td><td>MBR01-MBR10</td><td>FIX gateway clients</td></tr>
+    <tr><td>200-209</td><td>MBR01-MBR10</td><td>AI traders</td></tr>
+  </table>
+  <p><strong>On each trade:</strong> Buy side reduces capital, updates weighted average cost. Sell side adds proceeds, realizes P&amp;L. <code>getLeaderboard()</code> returns members sorted by capital (thread-safe, mutex-protected).</p>
+</section>
+
+<!-- ═══════ 13. AI ═══════ -->
+<section id="ai">
+  <h2>13. AI Trading Members</h2>
+  <p>10 automated trading members with 3 rotating strategies:</p>
+  <table>
+    <tr><th>Strategy</th><th>Logic</th></tr>
+    <tr><td><span class="badge badge-green">Momentum</span></td><td>If last N prices trending up → BUY. Down → SELL. Follow the trend.</td></tr>
+    <tr><td><span class="badge badge-purple">Mean Reversion</span></td><td>If price > moving average → SELL. Below → BUY. Fade the move.</td></tr>
+    <tr><td><span class="badge badge-orange">Random</span></td><td>Random side (50/50), random qty (10-100), price around midpoint.</td></tr>
+  </table>
+  <p><strong>Data sources:</strong> <code>BookUpdateEvent</code> (BBO), <code>TradeEvent</code> (price history), <code>ExecReportEvent</code> (fill confirmations).</p>
+  <p><strong>Output:</strong> <code>NewOrderEvent</code> → OEGActor via Event::Pipe, ~3s intervals via Actor::Callback.</p>
+</section>
+
+<!-- ═══════ 14. STRUCTURE ═══════ -->
+<section id="structure">
+  <h2>14. Project Structure</h2>
+  <pre><code>EuNEx/
+├── CMakeLists.txt                    Build configuration
+├── README.md                         Project overview
+├── src/
+│   ├── main.cpp                      Entry point, actor wiring
+│   ├── common/
+│   │   ├── Types.hpp                 Core types (Price_t, Order, Trade)
+│   │   ├── Book.hpp / Book.cpp       Price-time priority matching
+│   ├── engine/
+│   │   └── SimplxShim.hpp            Actor framework (Simplx API)
+│   ├── actors/
+│   │   ├── Events.hpp                Inter-actor event definitions
+│   │   ├── OEGActor.hpp/cpp          Order Entry Gateway
+│   │   ├── MECoreActor.hpp/cpp       Matching Engine core (per symbol)
+│   │   ├── MDGActor.hpp/cpp          Market Data Gateway
+│   │   ├── FIXAcceptorActor.hpp/cpp  FIX 4.4 TCP protocol gateway
+│   │   ├── ClearingHouseActor.hpp/cpp Trade clearing &amp; positions
+│   │   └── AITraderActor.hpp/cpp     Automated trading members
+│   ├── net/SocketCompat.hpp          Cross-platform sockets
+│   ├── persistence/
+│   │   ├── KafkaBus.hpp              Multi-topic Kafka publisher
+│   │   ├── PersistenceStore.hpp      Store interface
+│   │   └── KafkaStore.hpp            Kafka adapter (optional)
+│   ├── recovery/RecoveryProxy.hpp    Master/Mirror recovery
+│   └── iaca/
+│       ├── Fragment.hpp              IACA fragment definitions
+│       └── IacaAggregator.hpp/cpp    Fragment chain assembly
+├── tests/                            7 test suites
+├── examples/                         ping_pong, simple_match
+├── dashboard/                        Flask web UI (:8090)
+├── clearing_house/                   Flask clearing UI (:8091)
+├── fix_gateway/                      Python FIX gateway (alt)
+└── docker/
+    ├── Dockerfile                    Multi-stage build
+    ├── docker-compose.yml            Kafka + engine + nginx
+    └── nginx.conf                    Reverse proxy config</code></pre>
+</section>
+
+<!-- ═══════ 15. BUILD ═══════ -->
+<section id="build">
+  <h2>15. Build &amp; Test</h2>
+  <h3>Prerequisites</h3>
+  <ul>
+    <li><strong>C++20 compiler:</strong> MSVC 19.30+, GCC 12+, Clang 15+</li>
+    <li><strong>CMake:</strong> 3.16+</li>
+    <li><strong>Optional:</strong> librdkafka (for Kafka persistence)</li>
+  </ul>
+  <h3>Build Commands</h3>
+  <pre><code><span class="cmt"># Configure</span>
+cmake -B build -DEUNEX_BUILD_TESTS=ON
+
+<span class="cmt"># Build</span>
+cmake --build build --config Release
+
+<span class="cmt"># Run tests (7 suites)</span>
+<span class="kw">cd</span> build && ctest -C Release
+
+<span class="cmt"># Run engine</span>
+./build/Release/eunex_me</code></pre>
+
+  <h3>CMake Options</h3>
+  <table>
+    <tr><th>Option</th><th>Default</th><th>Description</th></tr>
+    <tr><td><code>EUNEX_USE_SIMPLX</code></td><td>OFF</td><td>Use real Simplx framework</td></tr>
+    <tr><td><code>EUNEX_USE_KAFKA</code></td><td>OFF</td><td>Enable Kafka persistence</td></tr>
+    <tr><td><code>EUNEX_BUILD_TESTS</code></td><td>ON</td><td>Build test binaries</td></tr>
+    <tr><td><code>EUNEX_BUILD_EXAMPLES</code></td><td>ON</td><td>Build example binaries</td></tr>
+  </table>
+
+  <h3>Test Suites</h3>
+  <table>
+    <tr><th>Suite</th><th>Cases</th><th>Verifies</th></tr>
+    <tr><td>OrderBookTest</td><td>26</td><td>Book matching, all TIFs, multi-level sweeps, cancels</td></tr>
+    <tr><td>MatchingEngineTest</td><td>&mdash;</td><td>MECoreActor event handling</td></tr>
+    <tr><td>ThreadedEngineTest</td><td>&mdash;</td><td>Multi-core Engine, mailbox</td></tr>
+    <tr><td>ClearingHouseTest</td><td>7</td><td>Capital, holdings, P&amp;L, session mapping</td></tr>
+    <tr><td>FIXGatewayTest</td><td>5</td><td>Symbol mapping, actor lifecycle, OEG routing</td></tr>
+    <tr><td>AITraderTest</td><td>6</td><td>Strategy execution, multi-symbol, clearing</td></tr>
+    <tr><td>StopOrdersTest</td><td>12</td><td>Stop triggers, phases, IOP, uncrossing</td></tr>
+  </table>
+</section>
+
+<!-- ═══════ 16. CONFIG ═══════ -->
+<section id="config">
+  <h2>16. Configuration</h2>
+  <table>
+    <tr><th>Parameter</th><th>Value</th><th>Description</th></tr>
+    <tr><td>FIX port</td><td>9001</td><td>FIXAcceptorActor TCP listen port</td></tr>
+    <tr><td>Symbols</td><td>4</td><td>AAPL(1), MSFT(2), GOOGL(3), EURO50(4)</td></tr>
+    <tr><td>AI members</td><td>10</td><td>MBR01&ndash;MBR10</td></tr>
+    <tr><td>Initial capital</td><td>100,000.0</td><td>Per clearing member</td></tr>
+    <tr><td>AI trade interval</td><td>~3s</td><td>Per round in main loop</td></tr>
+    <tr><td>Price scale</td><td>10<sup>8</sup></td><td>Fixed-point decimal places</td></tr>
+    <tr><td>Kafka brokers</td><td><code>EUNEX_KAFKA_BROKERS</code></td><td>Env var, e.g. <code>kafka:9092</code></td></tr>
+  </table>
+
+  <h3>Seed Orders</h3>
+  <pre><code>AAPL:   Sell 155.00/100, 154.00/200  |  Buy 153.00/150, 152.00/100
+MSFT:   Sell 325.00/100, 324.00/150  |  Buy 323.00/200, 322.00/100
+GOOGL:  Sell 142.00/100, 141.00/200  |  Buy 140.00/150, 139.00/100
+EURO50: Sell 5050.00/50, 5040.00/80  |  Buy 5030.00/60, 5020.00/40</code></pre>
+</section>
+
+<!-- ═══════ 17. EXTENDING ═══════ -->
+<section id="extending">
+  <h2>17. Extending EuNEx</h2>
+
+  <h3>Adding a New Symbol</h3>
+  <ol>
+    <li>Define a new <code>SymbolIndex_t</code> constant in <code>main.cpp</code></li>
+    <li>Create a <code>MECoreActor</code> passing OEG, MDG, CH actor IDs</li>
+    <li>Register: <code>oeGateway->mapSymbol(newSym, bookActor->getActorId())</code></li>
+    <li>Add to <code>AITraderActor</code>'s symbol list</li>
+    <li>Add seed orders if desired</li>
+  </ol>
+
+  <h3>Adding a New Actor</h3>
+  <ol>
+    <li>Create <code>src/actors/MyActor.hpp</code> inheriting <code>tredzone::Actor</code></li>
+    <li>Register event handlers: <code>registerEventHandler&lt;EventT&gt;(*this)</code></li>
+    <li>Create <code>Event::Pipe</code> members for destination actors</li>
+    <li>Add <code>.cpp</code> to <code>EUNEX_CORE_SOURCES</code> in CMakeLists.txt</li>
+    <li>Wire into topology in <code>main.cpp</code></li>
+  </ol>
+
+  <h3>Adding a New Event Type</h3>
+  <ol>
+    <li>Define struct in <code>Events.hpp</code> inheriting <code>tredzone::Actor::Event</code></li>
+    <li>Add <code>onEvent(const MyEvent&amp;)</code> to receiving actors</li>
+    <li>Register: <code>registerEventHandler&lt;MyEvent&gt;(*this)</code></li>
+    <li>Push: <code>pipe.push&lt;MyEvent&gt;(args...)</code></li>
+  </ol>
+
+  <h3>Adding a New Trading Strategy</h3>
+  <ol>
+    <li>Add enum value to <code>Strategy</code> in <code>AITraderActor.hpp</code></li>
+    <li>Implement <code>strategyMyStrategy()</code> method</li>
+    <li>Add case to <code>submitOrder()</code> switch</li>
+    <li>Assign to members in <code>initMembers()</code></li>
+  </ol>
+</section>
+
+</div>
+
+<div class="footer">
+  EuNEx v0.5.0 &mdash; Euronext Optiq Architecture Simulator &bull; C++20 Actor-Based Matching Engine<br>
+  To export as PDF: Open in browser &rarr; Print (Ctrl+P) &rarr; Save as PDF
+</div>
+
+</body>
+</html>
