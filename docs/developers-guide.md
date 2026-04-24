@@ -1,6 +1,6 @@
 # EuNEx Developers Guide
 
-**Version 0.6.1** | Euronext Optiq-Modeled Exchange Simulator
+**Version 0.7.0** | Euronext Optiq-Modeled Exchange Simulator
 
 ---
 
@@ -911,6 +911,42 @@ When the dashboard session starts, 4 orders are seeded per symbol to establish a
    Sell @ startPrice + 1.00, qty=100
 ```
 
+### Daily Close Persistence
+
+When the session ends ("End Day"), closing prices are saved to the `daily_close` SQLite table:
+
+```
+ daily_close table:
+   symbol TEXT, trade_date TEXT, close_price REAL, bid REAL, ask REAL,
+   volume INTEGER, trade_count INTEGER
+   PRIMARY KEY (symbol, trade_date)
+```
+
+On the next "Start Day", the engine loads the most recent closing prices from `daily_close` and uses them as seed prices instead of the hardcoded `startPrice` from config. This ensures price continuity across trading sessions.
+
+**Flow:**
+1. Session "End Day" → `_save_closing_prices()` writes current snapshot to `daily_close`
+2. Next "Start Day" → `_seed_initial_orders()` calls `get_last_closing_prices()` from DB
+3. If closing prices exist → seed around those prices
+4. If no history → fall back to `startPrice` from `shared/config.py`
+
+The simulator also loads closing prices on startup via `_load_closing_refs()`.
+
+### Ticker Tape
+
+The dashboard displays a scrolling ticker tape below the header showing all 7 symbols with:
+- Current price, percentage change (vs. previous price), volume
+- Green/red arrows for up/down movement
+- Auto-updates via SSE snapshot events
+
+### OHLCV Candlestick Chart
+
+The price chart renders OHLCV data as candlestick bars using a custom Chart.js plugin:
+- Green candles (close >= open), red candles (close < open)
+- High/low wicks drawn as vertical lines
+- Volume bars on secondary axis with matching colors
+- Tooltip shows full OHLCV values per bar
+
 ---
 
 ## 15. Project Structure
@@ -1112,8 +1148,9 @@ The engine pre-populates order books with spread-defining orders:
  ✓ Clearing house + AI traders     □ EuroCCP/LCH integration
  ✓ IACA fragments                  □ IACA FINISH + COPY + IDS
  ✓ Python bridge (JSON)            □ SBE multicast MDG
- ✓ Market simulation (C++ + Py)    □ Dashboard ticker + charts
-                                    □ AI analyst (Ollama/Llama)
+ ✓ Market simulation (C++ + Py)    □ AI analyst (Ollama/Llama)
+ ✓ Ticker tape + OHLCV charts      □ SBE multicast MDG
+ ✓ Daily close persistence          □ Multi-day backtesting
                                     □ SQLite trade persistence
                                     □ Developer message visualizer
                                     □ SATURN ARM (MiFID II RTS 22)

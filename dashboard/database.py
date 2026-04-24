@@ -75,6 +75,17 @@ def init_db(db_path):
             volume INTEGER,
             PRIMARY KEY (symbol, bucket)
         );
+
+        CREATE TABLE IF NOT EXISTS daily_close (
+            symbol TEXT,
+            trade_date TEXT,
+            close_price REAL,
+            bid REAL,
+            ask REAL,
+            volume INTEGER,
+            trade_count INTEGER,
+            PRIMARY KEY (symbol, trade_date)
+        );
     """)
     conn.commit()
 
@@ -191,3 +202,37 @@ def get_active_orders(db_path, symbol=None):
             "SELECT * FROM orders WHERE status IN ('New','PartiallyFilled') ORDER BY timestamp"
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def save_daily_close(db_path, symbol, trade_date, close_price, bid, ask, volume, trade_count):
+    conn = _get_conn(db_path)
+    conn.execute("""
+        INSERT INTO daily_close (symbol, trade_date, close_price, bid, ask, volume, trade_count)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(symbol, trade_date) DO UPDATE SET
+            close_price=excluded.close_price, bid=excluded.bid, ask=excluded.ask,
+            volume=excluded.volume, trade_count=excluded.trade_count
+    """, (symbol, trade_date, close_price, bid, ask, volume, trade_count))
+    conn.commit()
+
+
+def get_last_closing_prices(db_path):
+    conn = _get_conn(db_path)
+    rows = conn.execute("""
+        SELECT d.symbol, d.close_price, d.bid, d.ask, d.volume, d.trade_count, d.trade_date
+        FROM daily_close d
+        INNER JOIN (
+            SELECT symbol, MAX(trade_date) as max_date FROM daily_close GROUP BY symbol
+        ) latest ON d.symbol = latest.symbol AND d.trade_date = latest.max_date
+    """).fetchall()
+    return {r["symbol"]: dict(r) for r in rows}
+
+
+def get_daily_closes(db_path, symbol, limit=30):
+    conn = _get_conn(db_path)
+    rows = conn.execute(
+        "SELECT trade_date, close_price, bid, ask, volume, trade_count "
+        "FROM daily_close WHERE symbol=? ORDER BY trade_date DESC LIMIT ?",
+        (symbol, limit)
+    ).fetchall()
+    return [dict(r) for r in reversed(rows)]

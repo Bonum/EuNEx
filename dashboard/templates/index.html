@@ -28,6 +28,21 @@ button:hover{opacity:.85}
 .btn-blue{background:var(--blue);color:#fff}
 .btn-small{padding:3px 8px;font-size:11px}
 
+/* ── Ticker tape ─────────────────────────────────────── */
+.ticker-wrap{background:#0d1130;border-bottom:1px solid var(--border);overflow:hidden;height:32px;position:relative}
+.ticker-track{display:flex;align-items:center;height:100%;white-space:nowrap;animation:tickerScroll 30s linear infinite}
+.ticker-track:hover{animation-play-state:paused}
+@keyframes tickerScroll{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+.ticker-item{display:inline-flex;align-items:center;gap:6px;padding:0 20px;font-size:12px;font-weight:600}
+.ticker-sym{color:var(--accent)}
+.ticker-price{color:var(--text)}
+.ticker-change{font-size:11px;padding:1px 5px;border-radius:3px}
+.ticker-up{color:#00d4aa;background:#00d4aa18}
+.ticker-down{color:#ff6b6b;background:#ff6b6b18}
+.ticker-flat{color:var(--muted);background:#5a608818}
+.ticker-sep{color:var(--border);margin:0 4px}
+.ticker-vol{color:var(--muted);font-size:10px;font-weight:400}
+
 .grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;padding:12px 20px}
 .panel{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px;overflow:hidden}
 .panel h3{color:var(--accent);font-size:13px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
@@ -60,7 +75,7 @@ border-radius:6px;color:var(--text);font-size:12px}
 .chart-controls{display:flex;gap:4px;margin-bottom:8px}
 .chart-controls button{padding:3px 10px;font-size:11px;background:var(--border);color:var(--muted);border-radius:4px}
 .chart-controls button.active{background:var(--accent);color:var(--bg)}
-#priceChart{width:100%!important;height:200px!important}
+#priceChart{width:100%!important;height:220px!important}
 
 .modal-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:100;justify-content:center;align-items:center}
 .modal-overlay.show{display:flex}
@@ -89,6 +104,11 @@ border-radius:6px;color:var(--text);font-size:12px}
   </div>
 </div>
 
+<!-- Ticker tape -->
+<div class="ticker-wrap">
+  <div class="ticker-track" id="tickerTrack"></div>
+</div>
+
 <!-- Row 1: Order Entry | Order Book | Market Snapshot -->
 <div class="grid">
   <div class="panel">
@@ -101,7 +121,7 @@ border-radius:6px;color:var(--text);font-size:12px}
       <div><label>TIF</label>
         <select id="orderTif"><option>Day</option><option>GTC</option><option>IOC</option><option>FOK</option></select></div>
       <div><label>Price</label>
-        <input id="orderPrice" type="number" step="0.01" value="185.00"></div>
+        <input id="orderPrice" type="number" step="0.01" value="154.00"></div>
       <div style="grid-column:1/-1"><label>Quantity</label>
         <input id="orderQty" type="number" value="100" min="1"></div>
     </div>
@@ -197,13 +217,18 @@ border-radius:6px;color:var(--text);font-size:12px}
 const state = {orders:[], trades:[], snapshots:{}, symbols:{}, session:'idle'};
 let chartPeriod = '1h';
 let priceChart = null;
+const prevPrices = {};
 
 async function init() {
   const resp = await fetch('/data');
   const d = await resp.json();
   Object.assign(state, d);
+  for (const [sid, info] of Object.entries(state.symbols)) {
+    prevPrices[sid] = info.startPrice || 0;
+  }
   populateSymbolSelectors();
   renderAll();
+  renderTicker();
   loadChart();
   loadLeaderboard();
   connectSSE();
@@ -242,14 +267,39 @@ function connectSSE() {
   });
   es.addEventListener('snapshot', e => {
     const s = JSON.parse(e.data);
+    if (state.snapshots[s.symbolIdx]) {
+      prevPrices[s.symbolIdx] = state.snapshots[s.symbolIdx].lastPrice || prevPrices[s.symbolIdx];
+    }
     state.snapshots[s.symbolIdx] = s;
-    renderSnapshots(); renderOrderBook(); renderStats();
+    renderSnapshots(); renderOrderBook(); renderStats(); renderTicker();
   });
   es.addEventListener('session', e => {
     const s = JSON.parse(e.data);
     state.session = s.status;
     renderSession();
   });
+}
+
+// ── Ticker ────────────────────────────────────────────
+function renderTicker() {
+  const track = document.getElementById('tickerTrack');
+  let items = '';
+  for (const [sid, info] of Object.entries(state.symbols)) {
+    const snap = state.snapshots[sid];
+    const price = snap ? snap.lastPrice : info.startPrice;
+    const prev = prevPrices[sid] || info.startPrice;
+    const change = prev > 0 ? ((price - prev) / prev * 100) : 0;
+    const changeCls = change > 0.001 ? 'ticker-up' : change < -0.001 ? 'ticker-down' : 'ticker-flat';
+    const arrow = change > 0.001 ? '&#9650;' : change < -0.001 ? '&#9660;' : '&#9644;';
+    const vol = snap ? (snap.volume || 0) : 0;
+    items += '<span class="ticker-item">' +
+      '<span class="ticker-sym">' + info.name + '</span>' +
+      '<span class="ticker-price">' + fmt(price) + '</span>' +
+      '<span class="ticker-change ' + changeCls + '">' + arrow + ' ' + Math.abs(change).toFixed(2) + '%</span>' +
+      '<span class="ticker-vol">Vol ' + vol + '</span>' +
+      '</span><span class="ticker-sep">|</span>';
+  }
+  track.innerHTML = items + items;
 }
 
 function renderAll() { renderSession(); renderOrders(); renderTrades(); renderSnapshots(); renderOrderBook(); renderStats(); }
@@ -336,6 +386,7 @@ function renderStats() {
   document.getElementById('statsTable').innerHTML = html;
 }
 
+// ── OHLCV Chart with candlestick bars ─────────────────
 async function loadChart() {
   const sym = document.getElementById('chartSymbol');
   const symName = sym.options[sym.selectedIndex] ? sym.options[sym.selectedIndex].textContent.split(' ')[0] : 'AAPL';
@@ -348,33 +399,90 @@ async function loadChart() {
 
 function updateChart(bars, symName) {
   const labels = bars.map(b => new Date(b.bucket * 1000).toLocaleTimeString());
+  const highs = bars.map(b => b.high);
+  const lows = bars.map(b => b.low);
+  const opens = bars.map(b => b.open);
   const closes = bars.map(b => b.close);
   const volumes = bars.map(b => b.volume);
+  const colors = bars.map(b => b.close >= b.open ? '#00d4aa' : '#ff6b6b');
+  const bgColors = bars.map(b => b.close >= b.open ? '#00d4aa44' : '#ff6b6b44');
+
   if (priceChart) priceChart.destroy();
   const ctx = document.getElementById('priceChart').getContext('2d');
+
+  const candlePlugin = {
+    id: 'candlestick',
+    afterDatasetsDraw(chart) {
+      const meta = chart.getDatasetMeta(0);
+      if (!meta || !meta.data.length) return;
+      const yScale = chart.scales.y;
+      const xScale = chart.scales.x;
+
+      meta.data.forEach((point, i) => {
+        if (i >= bars.length) return;
+        const x = point.x;
+        const high = yScale.getPixelForValue(highs[i]);
+        const low = yScale.getPixelForValue(lows[i]);
+        const open = yScale.getPixelForValue(opens[i]);
+        const close = yScale.getPixelForValue(closes[i]);
+        const color = closes[i] >= opens[i] ? '#00d4aa' : '#ff6b6b';
+        const barW = Math.max(4, (xScale.width / bars.length) * 0.6);
+
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, high);
+        ctx.lineTo(x, low);
+        ctx.stroke();
+
+        ctx.fillStyle = color;
+        const top = Math.min(open, close);
+        const bot = Math.max(open, close);
+        const bodyH = Math.max(bot - top, 1);
+        ctx.fillRect(x - barW/2, top, barW, bodyH);
+        ctx.restore();
+      });
+    }
+  };
+
   priceChart = new Chart(ctx, {
     type: 'line',
     data: {
       labels,
       datasets: [{
-        label: symName + ' Price',
-        data: closes, borderColor: '#00d4aa', backgroundColor: '#00d4aa22',
-        fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2, yAxisID: 'y',
+        label: symName + ' Close',
+        data: closes, borderColor: 'transparent', backgroundColor: 'transparent',
+        pointRadius: 0, borderWidth: 0, yAxisID: 'y',
       },{
         label: 'Volume', data: volumes, type: 'bar',
-        backgroundColor: '#4a90d944', yAxisID: 'y1',
+        backgroundColor: bgColors, yAxisID: 'y1',
       }]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: {mode:'index', intersect:false},
-      plugins: {legend:{display:false}},
+      plugins: {
+        legend:{display:false},
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              const i = ctx.dataIndex;
+              if (ctx.datasetIndex === 0 && i < bars.length) {
+                return 'O:'+fmt(opens[i])+' H:'+fmt(highs[i])+' L:'+fmt(lows[i])+' C:'+fmt(closes[i]);
+              }
+              return 'Vol: ' + (volumes[i]||0);
+            }
+          }
+        }
+      },
       scales: {
         x: {ticks:{color:'#5a6088',maxTicksLimit:10},grid:{color:'#1a1f45'}},
         y: {position:'left',ticks:{color:'#00d4aa'},grid:{color:'#1a1f45'}},
         y1:{position:'right',ticks:{color:'#4a90d9'},grid:{display:false}},
       }
-    }
+    },
+    plugins: [candlePlugin]
   });
 }
 

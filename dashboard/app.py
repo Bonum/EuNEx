@@ -30,7 +30,9 @@ from flask import Flask, render_template, request, jsonify, Response
 from dashboard.database import (
     init_db, save_order, save_trade, record_ohlcv,
     get_ohlcv, get_recent_orders, get_recent_trades, get_active_orders,
+    save_daily_close, get_last_closing_prices, get_daily_closes,
 )
+from datetime import date
 from shared.config import SYMBOLS, DASHBOARD_PORT, DASHBOARD_DB, CH_URL, SIM_INTERVAL, SIM_ORDERS_PER_ROUND
 
 app = Flask(__name__)
@@ -381,6 +383,12 @@ def history_trades():
     rows = get_recent_trades(db_path, limit)
     return jsonify(rows)
 
+@app.route("/history/daily/<symbol>")
+def history_daily(symbol):
+    limit = int(request.args.get("limit", 30))
+    rows = get_daily_closes(db_path, symbol, limit)
+    return jsonify(rows)
+
 @app.route("/ch/leaderboard")
 def ch_leaderboard():
     try:
@@ -420,6 +428,7 @@ def session_resume():
 @app.route("/session/end", methods=["POST"])
 def session_end():
     global session_status
+    _save_closing_prices()
     session_status = "idle"
     broadcast_event("session", {"status": session_status})
     _notify_ch("stop")
@@ -431,8 +440,13 @@ def session_status_route():
 
 
 def _seed_initial_orders():
+    prev_closes = get_last_closing_prices(db_path)
     for sym_id, info in symbols.items():
-        ref = info["startPrice"]
+        sym_name = info["name"]
+        if sym_name in prev_closes:
+            ref = prev_closes[sym_name]["close_price"]
+        else:
+            ref = info["startPrice"]
         for offset, qty in [(-0.50, 150), (-1.00, 100), (0.50, 200), (1.00, 100)]:
             side = "Buy" if offset < 0 else "Sell"
             engine.submit_order(
@@ -440,6 +454,21 @@ def _seed_initial_orders():
                 price=round(ref + offset, 2), quantity=qty,
                 tif="Day", source="seed",
             )
+
+
+def _save_closing_prices():
+    today = date.today().isoformat()
+    with state_lock:
+        for sym_id, info in symbols.items():
+            snap = snapshots.get(sym_id, {})
+            sym_trades = [t for t in trades if t["symbolIdx"] == sym_id]
+            close_price = snap.get("lastPrice", 0) or info["startPrice"]
+            bid = snap.get("bestBid", 0)
+            ask = snap.get("bestAsk", 0)
+            volume = sum(t["quantity"] for t in sym_trades)
+            trade_count = len(sym_trades)
+            save_daily_close(db_path, info["name"], today,
+                             close_price, bid, ask, volume, trade_count)
 
 
 def _notify_ch(action):
@@ -466,6 +495,7 @@ class MarketSimulator:
         self._thread = None
         self._running = False
         self._ref_prices = {sid: info["startPrice"] for sid, info in symbols.items()}
+        self._load_closing_refs()
 
     def start(self):
         if self._running:
@@ -528,6 +558,15 @@ class MarketSimulator:
                 tif="Day",
                 source="sim",
             )
+
+    def _load_closing_refs(self):
+        try:
+            prev = get_last_closing_prices(db_path)
+            for sid, info in symbols.items():
+                if info["name"] in prev:
+                    self._ref_prices[sid] = prev[info["name"]]["close_price"]
+        except Exception:
+            pass
 
     def _current_ref(self, sym_id):
         snap = snapshots.get(sym_id, {})

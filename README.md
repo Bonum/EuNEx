@@ -27,7 +27,7 @@ ch_ai_trader.py          →   ClearingHouseActor        →   Clearing House (P
   AI strategies          →   AITraderActor             →   Trading obligations
 ```
 
-## Actor Topology (v0.6)
+## Actor Topology (v0.7)
 
 ```
  Core 0: OEGActor + FIXAcceptorActor     ← Order entry & FIX protocol
