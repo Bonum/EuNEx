@@ -1,6 +1,6 @@
 # EuNEx Developers Guide
 
-**Version 0.5.0** | Euronext Optiq-Modeled Exchange Simulator
+**Version 0.6.0** | Euronext Optiq-Modeled Exchange Simulator
 
 ---
 
@@ -750,7 +750,10 @@ docker compose up --build
 | AAPL          | 1             |
 | MSFT          | 2             |
 | GOOGL         | 3             |
-| EURO50        | 4             |
+| TSLA          | 4             |
+| NVDA          | 5             |
+| AMD           | 6             |
+| ENX           | 7             |
 
 ---
 
@@ -981,7 +984,7 @@ cd build && ctest -C Release --output-on-failure
 | Parameter            | Value     | Description                          |
 |---------------------|-----------|--------------------------------------|
 | FIX port            | 9001      | FIXAcceptorActor TCP listen port     |
-| Symbols             | 4         | AAPL(1), MSFT(2), GOOGL(3), EURO50(4) |
+| Symbols             | 7         | AAPL, MSFT, GOOGL, TSLA, NVDA, AMD, ENX |
 | AI members          | 10        | MBR01-MBR10                          |
 | Initial capital     | 100,000.0 | Per clearing member                  |
 | AI trade interval   | ~3s       | Per round in main loop               |
@@ -992,10 +995,13 @@ cd build && ctest -C Release --output-on-failure
 The engine pre-populates order books with spread-defining orders:
 
 ```
- AAPL:   Sell 155.00/100, 154.00/200  |  Buy 153.00/150, 152.00/100
- MSFT:   Sell 325.00/100, 324.00/150  |  Buy 323.00/200, 322.00/100
- GOOGL:  Sell 142.00/100, 141.00/200  |  Buy 140.00/150, 139.00/100
- EURO50: Sell 5050.00/50, 5040.00/80  |  Buy 5030.00/60, 5020.00/40
+ AAPL:   Sell 155.00/100, 154.50/200  |  Buy 153.50/150, 153.00/100
+ MSFT:   Sell 325.00/100, 324.50/150  |  Buy 323.50/200, 323.00/100
+ GOOGL:  Sell 142.00/100, 141.50/200  |  Buy 140.50/150, 140.00/100
+ TSLA:   Sell 376.00/80,  375.50/120  |  Buy 374.50/100, 374.00/80
+ NVDA:   Sell 202.00/100, 201.50/150  |  Buy 200.50/120, 200.00/100
+ AMD:    Sell 321.00/90,  320.50/130  |  Buy 319.50/110, 319.00/80
+ ENX:    Sell 147.00/60,  146.50/100  |  Buy 145.50/80,  145.00/60
 ```
 
 ---
@@ -1035,26 +1041,28 @@ The engine pre-populates order books with spread-defining orders:
 ### Future Roadmap
 
 ```
- Current (v0.4)                    Planned
+ Current (v0.6)                    Planned
  ══════════════                    ═══════════════════════════════════
 
- ✓ Limit + Market orders           □ Stop, Pegged, Mid-Point, Iceberg
+ ✓ Limit + Market + Stop orders    □ Pegged, Mid-Point, Iceberg
  ✓ IOC, FOK, Day                   □ GTD, GTC, VFU, VFCU
- ✓ Continuous matching              □ Trading phases (pre-open, close)
+ ✓ Trading phases (PreOpen/CTS)    □ TAL, VDO, Reserved phases
  ✓ FIX 4.4 gateway                 □ FIX 5.0 SP2 + SBE binary
- ✓ In-memory persistence           □ Kafka persistence
+ ✓ Kafka Bus persistence           □ Kafka consumer replay
  ✓ SimplxShim (emulation)          □ Real Simplx multi-core
- ✓ 4 symbols                       □ Multi-segment, partitions
+ ✓ 7 symbols (real prices)         □ Multi-segment, partitions
  ✓ Single partition                □ Cross-partition routing
- ✓ Basic clearing                  □ EuroCCP/LCH integration
+ ✓ Clearing house + AI traders     □ EuroCCP/LCH integration
  ✓ IACA fragments                  □ IACA FINISH + COPY + IDS
  ✓ Python bridge (JSON)            □ SBE multicast MDG
+                                    □ Dashboard ticker + charts
+                                    □ AI analyst (Ollama/Llama)
+                                    □ SQLite trade persistence
+                                    □ Developer message visualizer
                                     □ SATURN ARM (MiFID II RTS 22)
                                     □ PTB (Post-Trade Box)
-                                    □ Uncrossing algorithm
-                                    □ Price collars & reservations
 ```
 
 ---
 
-*Generated for EuNEx v0.4.0 — Euronext Optiq Architecture Simulator*
+*Generated for EuNEx v0.6.0 — Euronext Optiq Architecture Simulator*

@@ -28,6 +28,7 @@
 #include <csignal>
 #include <atomic>
 #include <cstdlib>
+#include <unordered_map>
 
 using namespace tredzone;
 using namespace eunex;
@@ -38,7 +39,7 @@ void signalHandler(int) { g_running = false; }
 
 int main() {
     std::cout << "===========================================\n";
-    std::cout << "  EuNEx Matching Engine v0.5\n";
+    std::cout << "  EuNEx Matching Engine v0.6\n";
     std::cout << "  C++ Actor Architecture (Optiq model)\n";
     std::cout << "===========================================\n\n";
 
@@ -58,9 +59,14 @@ int main() {
     constexpr SymbolIndex_t SYM_AAPL  = 1;
     constexpr SymbolIndex_t SYM_MSFT  = 2;
     constexpr SymbolIndex_t SYM_GOOGL = 3;
-    constexpr SymbolIndex_t SYM_EURO50 = 4;
+    constexpr SymbolIndex_t SYM_TSLA  = 4;
+    constexpr SymbolIndex_t SYM_NVDA  = 5;
+    constexpr SymbolIndex_t SYM_AMD   = 6;
+    constexpr SymbolIndex_t SYM_ENX   = 7;
 
-    std::vector<SymbolIndex_t> allSymbols = {SYM_AAPL, SYM_MSFT, SYM_GOOGL, SYM_EURO50};
+    std::vector<SymbolIndex_t> allSymbols = {
+        SYM_AAPL, SYM_MSFT, SYM_GOOGL, SYM_TSLA, SYM_NVDA, SYM_AMD, SYM_ENX
+    };
 
     // --Core 0: OE Gateway ----------------------------------------
     auto oeGateway = std::make_unique<OEGActor>();
@@ -84,19 +90,15 @@ int main() {
 
     // --Core 1: Order Books (per symbol) --------------------------
     KafkaBus* kb = kafkaBus.get();
-    auto bookAAPL = std::make_unique<MECoreActor>(
-        SYM_AAPL, oeGateway->getActorId(), mdActor->getActorId(), chActor->getActorId(), kb);
-    auto bookMSFT = std::make_unique<MECoreActor>(
-        SYM_MSFT, oeGateway->getActorId(), mdActor->getActorId(), chActor->getActorId(), kb);
-    auto bookGOOGL = std::make_unique<MECoreActor>(
-        SYM_GOOGL, oeGateway->getActorId(), mdActor->getActorId(), chActor->getActorId(), kb);
-    auto bookEURO50 = std::make_unique<MECoreActor>(
-        SYM_EURO50, oeGateway->getActorId(), mdActor->getActorId(), chActor->getActorId(), kb);
+    auto oeId = oeGateway->getActorId();
+    auto mdId = mdActor->getActorId();
+    auto chId = chActor->getActorId();
 
-    oeGateway->mapSymbol(SYM_AAPL, bookAAPL->getActorId());
-    oeGateway->mapSymbol(SYM_MSFT, bookMSFT->getActorId());
-    oeGateway->mapSymbol(SYM_GOOGL, bookGOOGL->getActorId());
-    oeGateway->mapSymbol(SYM_EURO50, bookEURO50->getActorId());
+    std::unordered_map<SymbolIndex_t, std::unique_ptr<MECoreActor>> books;
+    for (auto sym : allSymbols) {
+        books[sym] = std::make_unique<MECoreActor>(sym, oeId, mdId, chId, kb);
+        oeGateway->mapSymbol(sym, books[sym]->getActorId());
+    }
 
     // --Core 0: FIX Gateway --------------------------------------
     auto fixGateway = std::make_unique<FIXAcceptorActor>(oeGateway->getActorId(), 9001);
@@ -112,10 +114,12 @@ int main() {
     std::cout << "Actor topology:\n";
     std::cout << "  Core 0: OEG (id=" << oeGateway->getActorId().id
               << "), FIXAcceptor (id=" << fixGateway->getActorId().id << ")\n";
-    std::cout << "  Core 1: Book AAPL (id=" << bookAAPL->getActorId().id
-              << "), MSFT (id=" << bookMSFT->getActorId().id
-              << "), GOOGL (id=" << bookGOOGL->getActorId().id
-              << "), EURO50 (id=" << bookEURO50->getActorId().id << ")\n";
+    std::cout << "  Core 1: ";
+    for (auto sym : allSymbols) {
+        std::cout << FIXAcceptorActor::symbolToString(sym) << "(id="
+                  << books[sym]->getActorId().id << ") ";
+    }
+    std::cout << "\n";
     std::cout << "  Core 2: MDG (id=" << mdActor->getActorId().id << ")\n";
     std::cout << "  Core 3: CH (id=" << chActor->getActorId().id
               << "), AITrader (id=" << aiTrader->getActorId().id << ")\n\n";
@@ -123,7 +127,7 @@ int main() {
     std::cout << "Services:\n";
     std::cout << "  FIX Gateway:  TCP port 9001\n";
     std::cout << "  AI Traders:   10 members (MBR01-MBR10)\n";
-    std::cout << "  Symbols:      AAPL, MSFT, GOOGL, EURO50\n";
+    std::cout << "  Symbols:      AAPL, MSFT, GOOGL, TSLA, NVDA, AMD, ENX\n";
     if (kafkaBus && kafkaBus->isConnected()) {
         std::cout << "  Kafka Bus:    " << kafkaBrokers << " (connected)\n";
     } else {
@@ -137,14 +141,27 @@ int main() {
 
     struct SeedOrder { SymbolIndex_t sym; Side side; double price; Quantity_t qty; };
     SeedOrder seeds[] = {
-        {SYM_AAPL,  Side::Sell, 155.00, 100}, {SYM_AAPL,  Side::Sell, 154.00, 200},
-        {SYM_AAPL,  Side::Buy,  153.00, 150}, {SYM_AAPL,  Side::Buy,  152.00, 100},
-        {SYM_MSFT,  Side::Sell, 325.00, 100}, {SYM_MSFT,  Side::Sell, 324.00, 150},
-        {SYM_MSFT,  Side::Buy,  323.00, 200}, {SYM_MSFT,  Side::Buy,  322.00, 100},
-        {SYM_GOOGL, Side::Sell, 142.00, 100}, {SYM_GOOGL, Side::Sell, 141.00, 200},
-        {SYM_GOOGL, Side::Buy,  140.00, 150}, {SYM_GOOGL, Side::Buy,  139.00, 100},
-        {SYM_EURO50, Side::Sell, 5050.00, 50}, {SYM_EURO50, Side::Sell, 5040.00, 80},
-        {SYM_EURO50, Side::Buy,  5030.00, 60}, {SYM_EURO50, Side::Buy,  5020.00, 40},
+        // AAPL ~$154
+        {SYM_AAPL,  Side::Sell, 155.00, 100}, {SYM_AAPL,  Side::Sell, 154.50, 200},
+        {SYM_AAPL,  Side::Buy,  153.50, 150}, {SYM_AAPL,  Side::Buy,  153.00, 100},
+        // MSFT ~$324
+        {SYM_MSFT,  Side::Sell, 325.00, 100}, {SYM_MSFT,  Side::Sell, 324.50, 150},
+        {SYM_MSFT,  Side::Buy,  323.50, 200}, {SYM_MSFT,  Side::Buy,  323.00, 100},
+        // GOOGL ~$141
+        {SYM_GOOGL, Side::Sell, 142.00, 100}, {SYM_GOOGL, Side::Sell, 141.50, 200},
+        {SYM_GOOGL, Side::Buy,  140.50, 150}, {SYM_GOOGL, Side::Buy,  140.00, 100},
+        // TSLA ~$375
+        {SYM_TSLA,  Side::Sell, 376.00, 80},  {SYM_TSLA,  Side::Sell, 375.50, 120},
+        {SYM_TSLA,  Side::Buy,  374.50, 100}, {SYM_TSLA,  Side::Buy,  374.00, 80},
+        // NVDA ~$201
+        {SYM_NVDA,  Side::Sell, 202.00, 100}, {SYM_NVDA,  Side::Sell, 201.50, 150},
+        {SYM_NVDA,  Side::Buy,  200.50, 120}, {SYM_NVDA,  Side::Buy,  200.00, 100},
+        // AMD ~$320
+        {SYM_AMD,   Side::Sell, 321.00, 90},  {SYM_AMD,   Side::Sell, 320.50, 130},
+        {SYM_AMD,   Side::Buy,  319.50, 110}, {SYM_AMD,   Side::Buy,  319.00, 80},
+        // ENX ~EUR146
+        {SYM_ENX,   Side::Sell, 147.00, 60},  {SYM_ENX,   Side::Sell, 146.50, 100},
+        {SYM_ENX,   Side::Buy,  145.50, 80},  {SYM_ENX,   Side::Buy,  145.00, 60},
     };
 
     ClOrdId_t seedClOrd = 1;
@@ -189,10 +206,9 @@ int main() {
                 }
             };
 
-            printBBO(SYM_AAPL, "AAPL");
-            printBBO(SYM_MSFT, "MSFT");
-            printBBO(SYM_GOOGL, "GOOGL");
-            printBBO(SYM_EURO50, "EURO50");
+            for (auto sym : allSymbols) {
+                printBBO(sym, FIXAcceptorActor::symbolToString(sym).c_str());
+            }
 
             if (fixGateway->isRunning()) {
                 std::cout << "  FIX clients: " << fixGateway->clientCount() << "\n";
@@ -216,8 +232,7 @@ int main() {
     for (auto sym : allSymbols) {
         auto* snap = mdActor->getSnapshot(sym);
         if (snap) {
-            const char* names[] = {"", "AAPL", "MSFT", "GOOGL", "EURO50"};
-            std::cout << "  " << names[sym] << ": "
+            std::cout << "  " << FIXAcceptorActor::symbolToString(sym) << ": "
                       << snap->tradeCount << " trades, last=" << toDouble(snap->lastTradePrice) << "\n";
         }
     }

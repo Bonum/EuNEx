@@ -33,14 +33,20 @@ void test_symbol_from_string() {
     ASSERT_EQ(FIXAcceptorActor::symbolFromString("AAPL"), 1u);
     ASSERT_EQ(FIXAcceptorActor::symbolFromString("MSFT"), 2u);
     ASSERT_EQ(FIXAcceptorActor::symbolFromString("GOOGL"), 3u);
-    ASSERT_EQ(FIXAcceptorActor::symbolFromString("EURO50"), 4u);
+    ASSERT_EQ(FIXAcceptorActor::symbolFromString("TSLA"), 4u);
+    ASSERT_EQ(FIXAcceptorActor::symbolFromString("NVDA"), 5u);
+    ASSERT_EQ(FIXAcceptorActor::symbolFromString("AMD"), 6u);
+    ASSERT_EQ(FIXAcceptorActor::symbolFromString("ENX"), 7u);
 }
 
 void test_symbol_to_string() {
     ASSERT_TRUE(FIXAcceptorActor::symbolToString(1) == "AAPL");
     ASSERT_TRUE(FIXAcceptorActor::symbolToString(2) == "MSFT");
     ASSERT_TRUE(FIXAcceptorActor::symbolToString(3) == "GOOGL");
-    ASSERT_TRUE(FIXAcceptorActor::symbolToString(4) == "EURO50");
+    ASSERT_TRUE(FIXAcceptorActor::symbolToString(4) == "TSLA");
+    ASSERT_TRUE(FIXAcceptorActor::symbolToString(5) == "NVDA");
+    ASSERT_TRUE(FIXAcceptorActor::symbolToString(6) == "AMD");
+    ASSERT_TRUE(FIXAcceptorActor::symbolToString(7) == "ENX");
     ASSERT_TRUE(FIXAcceptorActor::symbolToString(99) == "99");
 }
 

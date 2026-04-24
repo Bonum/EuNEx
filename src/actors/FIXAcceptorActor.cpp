@@ -18,7 +18,10 @@ FIXAcceptorActor::FIXAcceptorActor(const tredzone::ActorId& oeGatewayId, uint16_
     symbolNames_[1] = "AAPL";
     symbolNames_[2] = "MSFT";
     symbolNames_[3] = "GOOGL";
-    symbolNames_[4] = "EURO50";
+    symbolNames_[4] = "TSLA";
+    symbolNames_[5] = "NVDA";
+    symbolNames_[6] = "AMD";
+    symbolNames_[7] = "ENX";
 
     listenSock_ = socket(AF_INET, SOCK_STREAM, 0);
     if (listenSock_ == INVALID_SOCK) {
@@ -387,10 +390,13 @@ void FIXAcceptorActor::sendExecReport(SessionId_t sessionId, const ExecReportEve
 // ── Symbol mapping ───────────────────────────────────────────────
 
 SymbolIndex_t FIXAcceptorActor::symbolFromString(const std::string& sym) {
-    if (sym == "AAPL")   return 1;
-    if (sym == "MSFT")   return 2;
-    if (sym == "GOOGL")  return 3;
-    if (sym == "EURO50") return 4;
+    if (sym == "AAPL")  return 1;
+    if (sym == "MSFT")  return 2;
+    if (sym == "GOOGL") return 3;
+    if (sym == "TSLA")  return 4;
+    if (sym == "NVDA")  return 5;
+    if (sym == "AMD")   return 6;
+    if (sym == "ENX")   return 7;
     return static_cast<SymbolIndex_t>(std::strtoul(sym.c_str(), nullptr, 10));
 }
 
@@ -399,7 +405,10 @@ std::string FIXAcceptorActor::symbolToString(SymbolIndex_t idx) {
         case 1: return "AAPL";
         case 2: return "MSFT";
         case 3: return "GOOGL";
-        case 4: return "EURO50";
+        case 4: return "TSLA";
+        case 5: return "NVDA";
+        case 6: return "AMD";
+        case 7: return "ENX";
         default: return std::to_string(idx);
     }
 }
