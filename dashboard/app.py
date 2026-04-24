@@ -18,6 +18,7 @@ import json
 import time
 import queue
 import threading
+import random
 import sys
 import os
 import urllib.request
@@ -30,7 +31,7 @@ from dashboard.database import (
     init_db, save_order, save_trade, record_ohlcv,
     get_ohlcv, get_recent_orders, get_recent_trades, get_active_orders,
 )
-from shared.config import SYMBOLS, DASHBOARD_PORT, DASHBOARD_DB, CH_URL
+from shared.config import SYMBOLS, DASHBOARD_PORT, DASHBOARD_DB, CH_URL, SIM_INTERVAL, SIM_ORDERS_PER_ROUND
 
 app = Flask(__name__)
 
@@ -397,6 +398,7 @@ def session_start():
     session_status = "active"
     broadcast_event("session", {"status": session_status})
     _notify_ch("start")
+    _seed_initial_orders()
     return jsonify({"status": session_status})
 
 @app.route("/session/suspend", methods=["POST"])
@@ -428,6 +430,18 @@ def session_status_route():
     return jsonify({"status": session_status})
 
 
+def _seed_initial_orders():
+    for sym_id, info in symbols.items():
+        ref = info["startPrice"]
+        for offset, qty in [(-0.50, 150), (-1.00, 100), (0.50, 200), (1.00, 100)]:
+            side = "Buy" if offset < 0 else "Sell"
+            engine.submit_order(
+                symbol_id=sym_id, side=side, order_type="Limit",
+                price=round(ref + offset, 2), quantity=qty,
+                tif="Day", source="seed",
+            )
+
+
 def _notify_ch(action):
     try:
         data = json.dumps({"action": action}).encode()
@@ -442,10 +456,99 @@ def _notify_ch(action):
         pass
 
 
+# ── Market Simulation ──────────────────────────────────────────────
+
+class MarketSimulator:
+    def __init__(self, engine_ref, interval=SIM_INTERVAL, orders_per_round=SIM_ORDERS_PER_ROUND):
+        self.engine = engine_ref
+        self.interval = interval
+        self.orders_per_round = orders_per_round
+        self._thread = None
+        self._running = False
+        self._ref_prices = {sid: info["startPrice"] for sid, info in symbols.items()}
+
+    def start(self):
+        if self._running:
+            return
+        self._running = True
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def stop(self):
+        self._running = False
+
+    def _run(self):
+        while self._running:
+            if session_status == "active":
+                self._round()
+            time.sleep(self.interval)
+
+    def _round(self):
+        sym_ids = list(symbols.keys())
+        random.shuffle(sym_ids)
+
+        for sym_id in sym_ids:
+            ref = self._current_ref(sym_id)
+            for _ in range(self.orders_per_round):
+                side = random.choice(["Buy", "Sell"])
+                spread_pct = random.uniform(-0.005, 0.005)
+                price = round(ref * (1 + spread_pct), 2)
+                if price <= 0:
+                    price = 0.01
+                qty = random.randint(10, 200)
+
+                self.engine.submit_order(
+                    symbol_id=sym_id,
+                    side=side,
+                    order_type="Limit",
+                    price=price,
+                    quantity=qty,
+                    tif="Day",
+                    source="sim",
+                )
+
+            cross_side = random.choice(["Buy", "Sell"])
+            snap = snapshots.get(sym_id, {})
+            if cross_side == "Buy" and snap.get("bestAsk", 0) > 0:
+                cross_price = snap["bestAsk"] + 0.01
+            elif cross_side == "Sell" and snap.get("bestBid", 0) > 0:
+                cross_price = snap["bestBid"] - 0.01
+            else:
+                cross_price = ref
+            if cross_price <= 0:
+                cross_price = 0.01
+            cross_qty = random.randint(10, 50)
+
+            self.engine.submit_order(
+                symbol_id=sym_id,
+                side=cross_side,
+                order_type="Limit",
+                price=round(cross_price, 2),
+                quantity=cross_qty,
+                tif="Day",
+                source="sim",
+            )
+
+    def _current_ref(self, sym_id):
+        snap = snapshots.get(sym_id, {})
+        bid = snap.get("bestBid", 0)
+        ask = snap.get("bestAsk", 0)
+        if bid > 0 and ask > 0:
+            return (bid + ask) / 2
+        if snap.get("lastPrice", 0) > 0:
+            return snap["lastPrice"]
+        return self._ref_prices.get(sym_id, 100.0)
+
+
+simulator = MarketSimulator(engine)
+
+
 if __name__ == "__main__":
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     init_db(db_path)
+    simulator.start()
     port = DASHBOARD_PORT
     print(f"EuNEx Dashboard starting on http://localhost:{port}")
     print(f"  Database: {db_path}")
+    print(f"  Simulation: every {SIM_INTERVAL}s, {SIM_ORDERS_PER_ROUND} orders/symbol/round")
     app.run(host="0.0.0.0", port=port, debug=True, threaded=True)

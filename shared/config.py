@@ -27,11 +27,18 @@ KAFKA_TOPIC_CONTROL = "eunex.control"
 
 # ── Symbols ────────────────────────────────────────────────────────
 SYMBOLS = {
-    1: {"name": "AAPL", "segment": "EQU", "startPrice": 185.0, "tickSize": 0.01, "lotSize": 1},
-    2: {"name": "MSFT", "segment": "EQU", "startPrice": 420.0, "tickSize": 0.01, "lotSize": 1},
-    3: {"name": "GOOGL", "segment": "EQU", "startPrice": 175.0, "tickSize": 0.01, "lotSize": 1},
-    4: {"name": "EURO50", "segment": "EQD", "startPrice": 5050.0, "tickSize": 0.5, "lotSize": 1},
+    1: {"name": "AAPL",  "segment": "EQU", "startPrice": 154.0,  "tickSize": 0.01, "lotSize": 1},
+    2: {"name": "MSFT",  "segment": "EQU", "startPrice": 324.0,  "tickSize": 0.01, "lotSize": 1},
+    3: {"name": "GOOGL", "segment": "EQU", "startPrice": 141.0,  "tickSize": 0.01, "lotSize": 1},
+    4: {"name": "TSLA",  "segment": "EQU", "startPrice": 375.0,  "tickSize": 0.01, "lotSize": 1},
+    5: {"name": "NVDA",  "segment": "EQU", "startPrice": 201.0,  "tickSize": 0.01, "lotSize": 1},
+    6: {"name": "AMD",   "segment": "EQU", "startPrice": 320.0,  "tickSize": 0.01, "lotSize": 1},
+    7: {"name": "ENX",   "segment": "EQU", "startPrice": 146.0,  "tickSize": 0.01, "lotSize": 1},
 }
+
+# ── Simulation ─────────────────────────────────────────────────────
+SIM_INTERVAL = int(os.environ.get("EUNEX_SIM_INTERVAL", 30))
+SIM_ORDERS_PER_ROUND = int(os.environ.get("EUNEX_SIM_ORDERS", 4))
 
 # ── Clearing House ─────────────────────────────────────────────────
 CH_MEMBERS = {

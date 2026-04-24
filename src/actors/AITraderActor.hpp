@@ -55,6 +55,8 @@ private:
     static constexpr int TRADE_INTERVAL_MS = 30000;
     static constexpr int MAX_PRICE_HISTORY = 50;
 
+    static Price_t referencePrice(SymbolIndex_t sym);
+
     tredzone::Actor::Event::Pipe oePipe_;
     std::vector<SymbolIndex_t> symbols_;
     std::vector<AITraderMember> members_;

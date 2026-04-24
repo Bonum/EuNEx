@@ -219,7 +219,8 @@ EuNEx/
 2. ~~Kafka persistence~~ ✓ KafkaStore + Docker Compose (KRaft mode)
 3. ~~FIX gateway~~ ✓ C++ FIXAcceptorActor + Python fallback
 4. ~~Clearing House~~ ✓ ClearingHouseActor + AITraderActor
-5. **SBE encoding** — replace event structs with SBE-encoded messages
-6. **Master/Mirror failover** — implement full Recovery replay on Mirror node
-7. **Trading phases** — pre-open, uncrossing, continuous, close, TAL
-8. **Additional order types** — Stop, Pegged, Mid-Point, Iceberg
+5. ~~Market simulation~~ ✓ Realistic AI trading + Dashboard auto-simulation
+6. **SBE encoding** — replace event structs with SBE-encoded messages
+7. **Master/Mirror failover** — implement full Recovery replay on Mirror node
+8. **Trading phases** — pre-open, uncrossing, continuous, close, TAL
+9. **Additional order types** — Stop, Pegged, Mid-Point, Iceberg

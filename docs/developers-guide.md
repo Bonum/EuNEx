@@ -1,6 +1,6 @@
 # EuNEx Developers Guide
 
-**Version 0.6.0** | Euronext Optiq-Modeled Exchange Simulator
+**Version 0.6.1** | Euronext Optiq-Modeled Exchange Simulator
 
 ---
 
@@ -19,10 +19,11 @@
 11. [FIX Protocol Gateway](#11-fix-protocol-gateway)
 12. [Clearing House](#12-clearing-house)
 13. [AI Trading Members](#13-ai-trading-members)
-14. [Project Structure](#14-project-structure)
-15. [Build & Test](#15-build--test)
-16. [Configuration](#16-configuration)
-17. [Extending EuNEx](#17-extending-eunex)
+14. [Market Simulation](#14-market-simulation)
+15. [Project Structure](#15-project-structure)
+16. [Build & Test](#16-build--test)
+17. [Configuration](#17-configuration)
+18. [Extending EuNEx](#18-extending-eunex)
 
 ---
 
@@ -856,7 +857,63 @@ docker compose up --build
 
 ---
 
-## 14. Project Structure
+## 14. Market Simulation
+
+Both the C++ engine and the Python dashboard include market simulation to continuously generate orders and trades.
+
+### C++ Engine (AITraderActor)
+
+The `AITraderActor` generates orders every ~3 seconds per round. Each of the 10 AI members picks a random symbol and applies its strategy (Momentum, Mean Reversion, or Random). All strategies use per-symbol **reference prices** matching real market levels:
+
+| Symbol | Reference Price |
+|--------|----------------|
+| AAPL   | $154.00        |
+| MSFT   | $324.00        |
+| GOOGL  | $141.00        |
+| TSLA   | $375.00        |
+| NVDA   | $201.00        |
+| AMD    | $320.00        |
+| ENX    | €146.00        |
+
+When no BBO data is available yet, the fallback `submitOrder()` generates prices within ±3 ticks of the reference price instead of random values.
+
+### Python Dashboard (MarketSimulator)
+
+The dashboard runs a `MarketSimulator` thread that generates orders when the session status is `"active"`:
+
+```
+ Configuration (shared/config.py):
+   SIM_INTERVAL           = 30s    (env: EUNEX_SIM_INTERVAL)
+   SIM_ORDERS_PER_ROUND   = 4      (env: EUNEX_SIM_ORDERS)
+
+ Per round (every SIM_INTERVAL seconds):
+   For each of 7 symbols:
+     1. Submit SIM_ORDERS_PER_ROUND limit orders near current mid price (±0.5%)
+     2. Submit 1 crossing order that will match against the book
+     → Generates resting orders + at least 1 trade per symbol per round
+```
+
+**Order flow:**
+- Session "Start Day" → seeds initial orders (2 bid + 2 ask per symbol)
+- Simulation thread wakes every 30s → submits ~35 orders → ~7 trades
+- All trades are persisted to SQLite (trades table + OHLCV aggregation)
+- Dashboard chart shows candlestick data from OHLCV buckets
+
+### Seed Orders (Session Start)
+
+When the dashboard session starts, 4 orders are seeded per symbol to establish a market:
+
+```
+ For each symbol at startPrice:
+   Buy  @ startPrice - 1.00, qty=100
+   Buy  @ startPrice - 0.50, qty=150
+   Sell @ startPrice + 0.50, qty=200
+   Sell @ startPrice + 1.00, qty=100
+```
+
+---
+
+## 15. Project Structure
 
 ```
  EuNEx/
@@ -918,7 +975,7 @@ docker compose up --build
 
 ---
 
-## 15. Build & Test
+## 16. Build & Test
 
 ### Prerequisites
 
@@ -977,7 +1034,7 @@ cd build && ctest -C Release --output-on-failure
 
 ---
 
-## 16. Configuration
+## 17. Configuration
 
 ### Runtime Configuration (main.cpp)
 
@@ -1006,7 +1063,7 @@ The engine pre-populates order books with spread-defining orders:
 
 ---
 
-## 17. Extending EuNEx
+## 18. Extending EuNEx
 
 ### Adding a New Symbol
 
@@ -1055,7 +1112,7 @@ The engine pre-populates order books with spread-defining orders:
  ✓ Clearing house + AI traders     □ EuroCCP/LCH integration
  ✓ IACA fragments                  □ IACA FINISH + COPY + IDS
  ✓ Python bridge (JSON)            □ SBE multicast MDG
-                                    □ Dashboard ticker + charts
+ ✓ Market simulation (C++ + Py)    □ Dashboard ticker + charts
                                     □ AI analyst (Ollama/Llama)
                                     □ SQLite trade persistence
                                     □ Developer message visualizer

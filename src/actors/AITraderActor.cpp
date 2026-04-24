@@ -89,13 +89,30 @@ void AITraderActor::tradeRound() {
     }
 }
 
+Price_t AITraderActor::referencePrice(SymbolIndex_t sym) {
+    switch (sym) {
+        case 1: return toFixedPrice(154.0);  // AAPL
+        case 2: return toFixedPrice(324.0);  // MSFT
+        case 3: return toFixedPrice(141.0);  // GOOGL
+        case 4: return toFixedPrice(375.0);  // TSLA
+        case 5: return toFixedPrice(201.0);  // NVDA
+        case 6: return toFixedPrice(320.0);  // AMD
+        case 7: return toFixedPrice(146.0);  // ENX
+        default: return toFixedPrice(100.0);
+    }
+}
+
 void AITraderActor::submitOrder(const AITraderMember& member, SymbolIndex_t symIdx) {
     std::uniform_int_distribution<int> sideDist(0, 1);
-    std::uniform_int_distribution<int> priceDist(100, 200);
     std::uniform_int_distribution<int> qtyDist(10, 100);
 
     Side side = sideDist(rng_) ? Side::Buy : Side::Sell;
-    Price_t price = toFixedPrice(priceDist(rng_) * 1.0);
+    Price_t refPrice = referencePrice(symIdx);
+    std::uniform_int_distribution<int> spreadDist(-3, 3);
+    Price_t tickOffset = spreadDist(rng_) * (PRICE_SCALE / 100);
+    Price_t price = refPrice + tickOffset;
+    if (price <= 0) price = PRICE_SCALE;
+
     Quantity_t qty = qtyDist(rng_);
     ClOrdId_t clOrdId = nextClOrdId_++;
 
@@ -159,7 +176,7 @@ void AITraderActor::strategyRandom(const AITraderMember& member, SymbolIndex_t s
     Side side = sideDist(rng_) ? Side::Buy : Side::Sell;
 
     Price_t midPrice = (bbo.bestBid + bbo.bestAsk) / 2;
-    if (midPrice == 0) midPrice = toFixedPrice(150.0);
+    if (midPrice == 0) midPrice = referencePrice(symIdx);
 
     std::uniform_int_distribution<int> spreadDist(-5, 5);
     Price_t tickOffset = spreadDist(rng_) * (PRICE_SCALE / 100);
