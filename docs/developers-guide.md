@@ -60,15 +60,45 @@ EuNEx (Euronext Exchange Simulator) is a C++20 actor-based matching engine that 
 ```
  ┌─────────────────────────────────────────────────────────────────────────────┐
  │                           EXTERNAL CLIENTS                                  │
- │                      FIX 4.4 / Direct API / Python Bridge                   │
- └─────────────────────────┬───────────────────────────────┬───────────────────┘
-                           │                               │
-                    TCP :9001                        Direct API
-                           │                               │
- ╔═════════════════════════╪═══════════════════════════════╪═══════════════════╗
+ │                  Browser / FIX 4.4 / Direct API / REST                      │
+ └──────┬──────────────────┬───────────────────────────────┬───────────────────┘
+        │                  │                               │
+     HTTP :7860         TCP :9001                    Direct API
+        │                  │                               │
+ ╔══════╪══════════════════════════════════════════════════════════════════════╗
+ ║  PRESENTATION LAYER (Python / nginx)                                       ║
+ ║                                                                             ║
+ ║  ┌──────────────────────┐    ┌──────────────────────┐                      ║
+ ║  │  nginx (:7860)       │    │                      │                      ║
+ ║  │  reverse proxy       │    │                      │                      ║
+ ║  │  /       → :8090     │    │                      │                      ║
+ ║  │  /ch/    → :8091     │    │                      │                      ║
+ ║  └───┬──────────┬───────┘    │                      │                      ║
+ ║      │          │            │                      │                      ║
+ ║      ▼          ▼            │                      │                      ║
+ ║  ┌──────────┐ ┌──────────┐  │                      │                      ║
+ ║  │Dashboard │ │Clearing  │  │                      │                      ║
+ ║  │ (:8090)  │ │House UI  │  │                      │                      ║
+ ║  │          │ │ (:8091)  │  │                      │                      ║
+ ║  │ Order    │ │          │  │                      │                      ║
+ ║  │ Book     │ │ Leader-  │  │                      │                      ║
+ ║  │ Charts   │ │ board    │  │                      │                      ║
+ ║  │ OHLCV    │ │ Holdings │  │                      │                      ║
+ ║  │ SSE      │ │ P&L      │  │                      │                      ║
+ ║  └────┬─────┘ └────┬─────┘  │                      │                      ║
+ ║       │            │         │                      │                      ║
+ ║   getSnapshot() getLeaderboard()                    │                      ║
+ ║   getRecentTrades() (thread-safe reads)             │                      ║
+ ╚═══════╪════════════╪════════════════════════════════════════════════════════╝
+         │            │        │                               │
+         └────────────┴────────┘                               │
+                      │                                        │
+               Thread-safe C++ API                      TCP :9001
+                      │                                        │
+ ╔════════════════════╪════════════════════════════════════╪═══════════════════╗
  ║  CORE 0 — Gateway                                                          ║
- ║  ┌──────────────────────┴───┐    ┌──────────────────────┴───┐              ║
- ║  │   FIXAcceptorActor       │    │     OEGActor             │              ║
+ ║  ┌──────────────────────────┐    ┌──────────────────────────┐              ║
+ ║  │   FIXAcceptorActor       │◄───┤     OEGActor        ◄────┤              ║
  ║  │                          │───►│                          │              ║
  ║  │  • TCP accept loop       │    │  • Session validation    │              ║
  ║  │  • FIX 4.4 parse/build   │    │  • Symbol routing        │              ║
@@ -183,6 +213,26 @@ EuNEx components are named to match Euronext Optiq production terminology:
 
 ```
  ┌──────────────────────────────────────────────────────────────────────────────┐
+ │  PRESENTATION (Python)                                                       │
+ │                                                                              │
+ │  ┌─ nginx :7860 ────────────────────────────────────────────────────────┐   │
+ │  │  /       → Dashboard :8090      /ch/ → Clearing House UI :8091      │   │
+ │  └──────────┬──────────────────────────────┬────────────────────────────┘   │
+ │             │                              │                                │
+ │  ┌──────────▼─────────────────┐  ┌────────▼───────────────────────┐        │
+ │  │  Dashboard (Flask :8090)   │  │  Clearing House UI (Flask :8091)│        │
+ │  │  • Order Book, Charts      │  │  • Leaderboard, P&L, Holdings  │        │
+ │  │  • OHLCV, SSE streaming   │  │  • Member portfolios           │        │
+ │  │  • SQLite for history      │  │                                 │        │
+ │  └──────────┬─────────────────┘  └────────┬───────────────────────┘        │
+ │             │ getSnapshot()               │ getLeaderboard()               │
+ │             │ getRecentTrades()           │ (thread-safe reads)            │
+ │             │ (thread-safe reads)         │                                │
+ └─────────────┼─────────────────────────────┼────────────────────────────────┘
+               │                             │
+               ▼                             ▼
+ ┌──────────────────────────────────────────────────────────────────────────────┐
+ │  C++ ACTOR ENGINE                                                            │
  │                                                                              │
  │  ┌─ CPU Core 0 ─────────────────┐    ┌─ CPU Core 1 ────────────────────┐   │
  │  │                               │    │                                 │   │
@@ -192,7 +242,7 @@ EuNEx components are named to match Euronext Optiq production terminology:
  │  │                               │    │  MECoreActor (EURO50, sym=4)   │   │
  │  │  FIXAcceptorActor             │    │                                 │   │
  │  │   • TCP :9001                 │    │  Each owns a Book instance     │   │
- │  │   • FIX 4.4 protocol         │    │  Single-threaded per actor     │   │
+ │  │   • FIX 4.4 protocol         │    │  KafkaBus* → Kafka topics      │   │
  │  │                               │    │  No locks in matching path     │   │
  │  └───────────────────────────────┘    └─────────────────────────────────┘   │
  │                                                                              │
@@ -202,10 +252,14 @@ EuNEx components are named to match Euronext Optiq production terminology:
  │  │   • BBO per symbol            │    │   • 10 members, capital, P&L   │   │
  │  │   • Trade history             │    │   • Session → Member mapping   │   │
  │  │   • Snapshot queries          │    │                                 │   │
- │  │                               │    │  AITraderActor                  │   │
+ │  │   ◄── Dashboard reads here   │    │  AITraderActor                  │   │
  │  │                               │    │   • 10 AI members              │   │
  │  │                               │    │   • Momentum / MeanRev / Rand  │   │
  │  └───────────────────────────────┘    └─────────────────────────────────┘   │
+ │                                                                              │
+ │  ┌─ KafkaBus (optional) ────────────────────────────────────────────────┐   │
+ │  │  eunex.orders │ eunex.trades │ eunex.market-data │ eunex.recovery   │   │
+ │  └──────────────────────────────────────────────────────────────────────┘   │
  │                                                                              │
  └──────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -228,6 +282,10 @@ EuNEx components are named to match Euronext Optiq production terminology:
              ──publishMarketData()► KafkaBus → eunex.market-data (if Kafka enabled)
 
  AITraderActor ──NewOrderEvent──► OEGActor (via pipe)
+
+ Dashboard (Python) ──getSnapshot()──────► MDGActor          (thread-safe read)
+                    ──getRecentTrades()──► MDGActor          (thread-safe read)
+ Clearing House UI  ──getLeaderboard()───► ClearingHouseActor (thread-safe read)
 ```
 
 ---
@@ -311,7 +369,27 @@ EuNEx components are named to match Euronext Optiq production terminology:
                                      └──────────────────────┘
                                               │
                                      getSnapshot() / getRecentTrades()
-                                     (thread-safe, read by Python bridge)
+                                     (thread-safe, mutex-protected)
+                                              │
+                              ┌───────────────┴───────────────┐
+                              │                               │
+                              ▼                               ▼
+                    ┌───────────────────┐         ┌───────────────────────┐
+                    │  Dashboard :8090  │         │  Clearing House :8091 │
+                    │  (Flask + SSE)    │         │  (Flask)              │
+                    │                   │         │                       │
+                    │  Order Book view  │         │  getLeaderboard()    │
+                    │  Trade charts     │         │  Member P&L, holdings│
+                    │  OHLCV history    │         │                       │
+                    └───────────────────┘         └───────────────────────┘
+                              │                               │
+                              └───────────┬───────────────────┘
+                                          │
+                                     nginx :7860
+                                     (reverse proxy)
+                                          │
+                                          ▼
+                                      Browser
 
  * KafkaBus publishes only when EUNEX_KAFKA_BROKERS is set at runtime
 ```
