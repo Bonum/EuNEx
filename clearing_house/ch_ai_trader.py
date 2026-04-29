@@ -33,7 +33,28 @@ OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2:3b")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
-HF_TOKEN = os.environ.get("HF_TOKEN", "")
+
+
+def _read_hf_token():
+    tok = os.environ.get("HF_TOKEN", "")
+    if tok:
+        return tok
+    for p in [
+        os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "token"),
+        os.path.join(os.environ.get("HF_HOME", ""), "token"),
+    ]:
+        if p and os.path.isfile(p):
+            try:
+                with open(p) as f:
+                    tok = f.read().strip()
+                if tok:
+                    return tok
+            except Exception:
+                pass
+    return ""
+
+
+HF_TOKEN = _read_hf_token()
 HF_MODEL = os.environ.get("HF_MODEL", "Qwen/Qwen2.5-7B-Instruct")
 
 
@@ -402,7 +423,7 @@ class AITrader:
                 "max_tokens": 200, "stream": False,
             }).encode()
             req = urllib.request.Request(
-                "https://api-inference.huggingface.co/v1/chat/completions", data=body,
+                "https://router.huggingface.co/v1/chat/completions", data=body,
                 headers={"Content-Type": "application/json",
                           "Authorization": f"Bearer {HF_TOKEN}"}, method="POST",
             )

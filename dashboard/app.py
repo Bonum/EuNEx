@@ -591,7 +591,29 @@ OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2:3b")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
-HF_TOKEN = os.environ.get("HF_TOKEN", "")
+
+
+def _read_hf_token():
+    tok = os.environ.get("HF_TOKEN", "")
+    if tok:
+        return tok
+    for p in [
+        os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "token"),
+        os.path.join(os.environ.get("HF_HOME", ""), "token"),
+    ]:
+        if p and os.path.isfile(p):
+            try:
+                with open(p) as f:
+                    tok = f.read().strip()
+                if tok:
+                    print(f"[AI] HF_TOKEN loaded from {p}")
+                    return tok
+            except Exception:
+                pass
+    return ""
+
+
+HF_TOKEN = _read_hf_token()
 HF_MODEL = os.environ.get("HF_MODEL", "Qwen/Qwen2.5-7B-Instruct")
 
 ai_insights = deque(maxlen=20)
@@ -666,6 +688,7 @@ def _try_ollama(prompt, model=None):
 
 def _try_groq(prompt, model=None):
     if not GROQ_API_KEY:
+        print("[AI] Groq skipped: no GROQ_API_KEY")
         return None
     model = model or GROQ_MODEL
     try:
@@ -686,12 +709,14 @@ def _try_groq(prompt, model=None):
         with urllib.request.urlopen(req, timeout=30) as resp:
             result = json.loads(resp.read())
             return result["choices"][0]["message"]["content"]
-    except Exception:
+    except Exception as e:
+        print(f"[AI] Groq error: {e}")
         return None
 
 
 def _try_hf(prompt, model=None):
     if not HF_TOKEN:
+        print("[AI] HuggingFace skipped: no HF_TOKEN")
         return None
     model = model or HF_MODEL
     try:
@@ -708,11 +733,13 @@ def _try_hf(prompt, model=None):
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {HF_TOKEN}",
             },
+            method="POST",
         )
         with urllib.request.urlopen(req, timeout=90) as resp:
             result = json.loads(resp.read())
             return result["choices"][0]["message"]["content"]
-    except Exception:
+    except Exception as e:
+        print(f"[AI] HuggingFace error: {e}")
         return None
 
 
