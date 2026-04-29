@@ -791,11 +791,13 @@ def ai_select():
 message_log = deque(maxlen=500)
 
 
-def log_message(stage, detail):
+def log_message(stage, detail, order_id=None, trade_id=None):
     entry = {
         "timestamp": time.time(),
         "stage": stage,
         "detail": detail,
+        "orderId": order_id,
+        "tradeId": trade_id,
     }
     message_log.append(entry)
     broadcast_event("msgflow", entry)
@@ -814,15 +816,15 @@ _orig_submit = engine.submit_order
 def _traced_submit(symbol_id, side, order_type, price, quantity,
                    tif="Day", source="dashboard", cl_ord_id=""):
     sym_name = symbols.get(symbol_id, {}).get("name", "?")
-    log_message("OEG", f"NewOrder {sym_name} {side} {quantity}@{price:.2f} [{source}]")
     result = _orig_submit(symbol_id, side, order_type, price, quantity, tif, source, cl_ord_id)
     oid = result.get("orderId", "?")
     status = result.get("status", "?")
-    log_message("Book", f"Order#{oid} → {status}")
+    log_message("OEG", f"NewOrder {sym_name} {side} {quantity}@{price:.2f} [{source}]", order_id=oid)
+    log_message("Book", f"Order#{oid} → {status}", order_id=oid)
     if status == "Filled":
-        log_message("Match", f"Order#{oid} fully filled")
+        log_message("Match", f"Order#{oid} fully filled", order_id=oid)
     elif status == "PartiallyFilled":
-        log_message("Match", f"Order#{oid} partial fill, rem={result.get('remainingQty', '?')}")
+        log_message("Match", f"Order#{oid} partial fill, rem={result.get('remainingQty', '?')}", order_id=oid)
     return result
 
 engine.submit_order = _traced_submit
@@ -830,10 +832,10 @@ engine.submit_order = _traced_submit
 _orig_cancel = engine.cancel_order
 
 def _traced_cancel(order_id):
-    log_message("OEG", f"CancelOrder #{order_id}")
+    log_message("OEG", f"CancelOrder #{order_id}", order_id=order_id)
     result = _orig_cancel(order_id)
     if result:
-        log_message("Book", f"Order#{order_id} cancelled")
+        log_message("Book", f"Order#{order_id} cancelled", order_id=order_id)
     return result
 
 engine.cancel_order = _traced_cancel
@@ -845,9 +847,14 @@ def _traced_broadcast(event_type, data):
     if event_type == "trade":
         tid = data.get("tradeId", "?")
         sym = data.get("symbol", "?")
-        log_message("Trade", f"Trade#{tid} {sym} {data.get('quantity',0)}@{data.get('price',0):.2f}")
-        log_message("DB", f"Trade#{tid} persisted to SQLite")
-        log_message("CH", f"Trade#{tid} → clearing (buy#{data.get('buyOrderId','?')}, sell#{data.get('sellOrderId','?')})")
+        buy_oid = data.get("buyOrderId", "?")
+        sell_oid = data.get("sellOrderId", "?")
+        log_message("Trade", f"Trade#{tid} {sym} {data.get('quantity',0)}@{data.get('price',0):.2f}",
+                    order_id=buy_oid, trade_id=tid)
+        log_message("Trade", f"Trade#{tid} {sym} {data.get('quantity',0)}@{data.get('price',0):.2f}",
+                    order_id=sell_oid, trade_id=tid)
+        log_message("DB", f"Trade#{tid} persisted to SQLite", trade_id=tid)
+        log_message("CH", f"Trade#{tid} → clearing (buy#{buy_oid}, sell#{sell_oid})", trade_id=tid)
     _orig_broadcast(event_type, data)
 
 broadcast_event = _traced_broadcast

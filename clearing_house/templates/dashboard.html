@@ -16,7 +16,15 @@ tr:hover{background:#1a1f45}
 .badge-met{background:#00d4aa33;color:#00d4aa}
 .badge-not{background:#ff6b6b33;color:#ff6b6b}
 .badge-strategy{background:#7c5cfc33;color:#7c5cfc}
+.badge-llm{background:#f0c04033;color:#f0c040}
 .rank{font-size:20px;font-weight:700;color:#f0c040}
+select.strat-sel{background:#1a1f45;color:#e0e0e0;border:1px solid #2a2f5a;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer}
+.expl-panel{margin-top:20px;background:#131835;border:1px solid #2a2f5a;border-radius:8px;padding:16px}
+.expl-panel h2{color:#f0c040;font-size:15px;margin-bottom:12px}
+.expl-card{border-left:3px solid #7c5cfc;background:#1a1f4566;padding:10px 14px;margin-bottom:8px;border-radius:0 6px 6px 0}
+.expl-header{font-size:11px;color:#8890b5;margin-bottom:4px;display:flex;justify-content:space-between}
+.expl-action{color:#00d4aa;font-weight:600;font-size:12px}
+.expl-reason{color:#e0e0e0;font-size:12px;line-height:1.5;margin-top:4px}
 </style></head><body>
 <div class="top-bar">
 <h1>Clearing House — Leaderboard</h1>
@@ -33,7 +41,13 @@ tr:hover{background:#1a1f45}
 <tr>
 <td class="rank">{{ loop.index }}</td>
 <td><strong>{{ m.member_id }}</strong></td>
-<td><span class="badge badge-strategy">{{ strategies.get(m.member_id, 'random') }}</span></td>
+<td>
+  <select class="strat-sel" onchange="setStrategy('{{ m.member_id }}', this.value)">
+    {% for s in ['momentum', 'mean_revert', 'random', 'llm'] %}
+    <option value="{{ s }}" {% if strategies.get(m.member_id, 'random') == s %}selected{% endif %}>{{ s }}</option>
+    {% endfor %}
+  </select>
+</td>
 <td class="{% if m.capital >= 100000 %}green{% else %}red{% endif %}">
     {{ "€{:,.2f}".format(m.capital) }}</td>
 <td>{{ "€{:,.2f}".format(m.holdings_value) }}</td>
@@ -46,5 +60,40 @@ tr:hover{background:#1a1f45}
 {% endfor %}
 </tbody>
 </table>
-<script>setTimeout(()=>location.reload(), 10000)</script>
+
+<div class="expl-panel">
+<h2>LLM Trading Explanations</h2>
+<div id="explCards"><div style="color:#8890b5;text-align:center;padding:16px">No LLM decisions yet. Set a member's strategy to "llm" to start.</div></div>
+</div>
+
+<script>
+function setStrategy(memberId, strategy) {
+  fetch('/api/member/' + memberId + '/strategy', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({strategy: strategy})
+  });
+}
+
+async function loadExplanations() {
+  try {
+    const resp = await fetch('/api/explanations');
+    const items = await resp.json();
+    if (!items.length) return;
+    const el = document.getElementById('explCards');
+    el.innerHTML = '';
+    for (const e of items.reverse()) {
+      const t = new Date(e.timestamp * 1000).toLocaleTimeString();
+      el.innerHTML += '<div class="expl-card">' +
+        '<div class="expl-header"><span>' + e.member_id + '</span><span>' + t + '</span></div>' +
+        '<div class="expl-action">' + e.action + '</div>' +
+        '<div class="expl-reason">' + e.reason + '</div></div>';
+    }
+  } catch(ex) {}
+}
+
+loadExplanations();
+setInterval(loadExplanations, 10000);
+setTimeout(()=>location.reload(), 30000);
+</script>
 </body></html>

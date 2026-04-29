@@ -39,7 +39,7 @@ cursor:pointer;font-size:13px;font-weight:600;transition:all .2s}
 .tab-content.active{display:block}
 
 /* ── Ticker tape ─────────────────────────────────────── */
-.ticker-wrap{background:#0d1130;border-bottom:1px solid var(--border);overflow:hidden;height:32px;position:relative}
+.ticker-wrap{background:linear-gradient(90deg,#1a2248,#0f1a3d,#1a2248);border-top:1px solid var(--accent);border-bottom:1px solid var(--accent);overflow:hidden;height:32px;position:relative}
 .ticker-track{display:flex;align-items:center;height:100%;white-space:nowrap;animation:tickerScroll 30s linear infinite}
 .ticker-track:hover{animation-play-state:paused}
 @keyframes tickerScroll{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
@@ -85,7 +85,8 @@ border-radius:6px;color:var(--text);font-size:12px}
 .chart-controls{display:flex;gap:4px;margin-bottom:8px}
 .chart-controls button{padding:3px 10px;font-size:11px;background:var(--border);color:var(--muted);border-radius:4px}
 .chart-controls button.active{background:var(--accent);color:var(--bg)}
-#priceChart{width:100%!important;height:220px!important}
+#priceChart{width:100%!important;height:170px!important}
+#volumeChart{width:100%!important;height:70px!important;margin-top:4px}
 
 .modal-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:100;justify-content:center;align-items:center}
 .modal-overlay.show{display:flex}
@@ -116,26 +117,44 @@ border-radius:6px;color:var(--text);font-size:12px}
 /* ── Message Flow Visualizer ─────────────────────────── */
 .flow-panel{margin:12px 20px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px}
 .flow-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.flow-layout{display:grid;grid-template-columns:280px 1fr;gap:14px;min-height:360px}
+.flow-order-list{border:1px solid var(--border);border-radius:6px;overflow-y:auto;max-height:400px}
+.flow-order-item{padding:8px 12px;border-bottom:1px solid #1a1f4522;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:12px;transition:background .15s}
+.flow-order-item:hover{background:#1a1f4566}
+.flow-order-item.selected{background:var(--purple);color:#fff;border-left:3px solid var(--accent)}
+.flow-order-item .oid{font-weight:700;color:var(--accent);font-size:11px}
+.flow-order-item.selected .oid{color:#fff}
+.flow-order-item .osummary{color:var(--muted);font-size:10px}
+.flow-order-item.selected .osummary{color:#ddd}
+.flow-detail-panel{border:1px solid var(--border);border-radius:6px;padding:14px}
 .flow-pipeline{display:flex;gap:2px;margin-bottom:16px;justify-content:center;flex-wrap:wrap}
-.flow-stage{text-align:center;padding:8px 14px;border-radius:6px;font-size:11px;font-weight:600;min-width:90px;position:relative}
-.flow-stage .count{font-size:16px;display:block;margin-bottom:2px}
-.flow-arrow{color:var(--muted);font-size:18px;display:flex;align-items:center;padding:0 2px}
+.flow-stage{text-align:center;padding:10px 16px;border-radius:6px;font-size:11px;font-weight:600;min-width:80px;transition:all .3s;opacity:0.3}
+.flow-stage.active{opacity:1;transform:scale(1.05)}
+.flow-stage .count{font-size:14px;display:block;margin-bottom:2px}
+.flow-arrow{color:var(--muted);font-size:18px;display:flex;align-items:center;padding:0 2px;transition:opacity .3s;opacity:0.3}
+.flow-arrow.active{opacity:1;color:var(--accent)}
 .stage-oeg{background:#4a90d922;color:var(--blue);border:1px solid #4a90d944}
 .stage-book{background:#00d4aa22;color:var(--accent);border:1px solid #00d4aa44}
 .stage-match{background:#f0c04022;color:var(--yellow);border:1px solid #f0c04044}
 .stage-trade{background:#7c5cfc22;color:var(--purple);border:1px solid #7c5cfc44}
 .stage-db{background:#ff6b6b22;color:var(--red);border:1px solid #ff6b6b44}
 .stage-ch{background:#00d4aa22;color:var(--accent);border:1px solid #00d4aa44}
-.flow-log{max-height:300px;overflow-y:auto;font-family:'Cascadia Code','Fira Code',monospace;font-size:11px}
-.flow-entry{padding:3px 8px;border-bottom:1px solid #1a1f4522;display:flex;gap:10px}
+.stage-oeg.active{background:#4a90d944;box-shadow:0 0 12px #4a90d944}
+.stage-book.active{background:#00d4aa44;box-shadow:0 0 12px #00d4aa44}
+.stage-match.active{background:#f0c04044;box-shadow:0 0 12px #f0c04044}
+.stage-trade.active{background:#7c5cfc44;box-shadow:0 0 12px #7c5cfc44}
+.stage-db.active{background:#ff6b6b44;box-shadow:0 0 12px #ff6b6b44}
+.stage-ch.active{background:#00d4aa44;box-shadow:0 0 12px #00d4aa44}
+.flow-msgs{max-height:250px;overflow-y:auto;font-family:'Cascadia Code','Fira Code',monospace;font-size:11px}
+.flow-entry{padding:4px 8px;border-bottom:1px solid #1a1f4522;display:flex;gap:10px;animation:fadeFlow .3s ease}
 .flow-entry:hover{background:#1a1f4544}
+@keyframes fadeFlow{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}
 .flow-ts{color:var(--muted);min-width:75px;font-size:10px}
 .flow-tag{min-width:50px;font-weight:600;font-size:10px;text-transform:uppercase}
 .flow-tag-oeg{color:var(--blue)}.flow-tag-book{color:var(--accent)}.flow-tag-match{color:var(--yellow)}
 .flow-tag-trade{color:var(--purple)}.flow-tag-db{color:var(--red)}.flow-tag-ch{color:var(--accent)}
 .flow-detail{color:var(--text)}
-.flow-active{animation:pulse .6s ease}
-@keyframes pulse{0%{background:#7c5cfc22}100%{background:transparent}}
+.flow-empty{padding:30px;text-align:center;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -222,6 +241,7 @@ border-radius:6px;color:var(--text);font-size:12px}
       </div>
     </h3>
     <canvas id="priceChart"></canvas>
+    <canvas id="volumeChart"></canvas>
   </div>
 </div>
 
@@ -296,25 +316,30 @@ border-radius:6px;color:var(--text);font-size:12px}
       </div>
     </div>
 
-    <!-- Pipeline diagram -->
-    <div class="flow-pipeline">
-      <div class="flow-stage stage-oeg"><span class="count" id="flowCntOEG">0</span>OEG</div>
-      <div class="flow-arrow">&#9654;</div>
-      <div class="flow-stage stage-book"><span class="count" id="flowCntBook">0</span>Book</div>
-      <div class="flow-arrow">&#9654;</div>
-      <div class="flow-stage stage-match"><span class="count" id="flowCntMatch">0</span>Match</div>
-      <div class="flow-arrow">&#9654;</div>
-      <div class="flow-stage stage-trade"><span class="count" id="flowCntTrade">0</span>Trade</div>
-      <div class="flow-arrow">&#9654;</div>
-      <div class="flow-stage stage-db"><span class="count" id="flowCntDB">0</span>DB</div>
-      <div class="flow-arrow">&#9654;</div>
-      <div class="flow-stage stage-ch"><span class="count" id="flowCntCH">0</span>CH</div>
-    </div>
+    <div class="flow-layout">
+      <!-- Left: Order list -->
+      <div class="flow-order-list" id="flowOrderList">
+        <div class="flow-empty">Waiting for orders...</div>
+      </div>
 
-    <!-- Live message log -->
-    <div class="flow-log" id="flowLog">
-      <div class="muted" style="padding:20px;text-align:center">
-        Waiting for messages... Submit an order or start a session to see the flow.
+      <!-- Right: Pipeline visualization + messages for selected order -->
+      <div class="flow-detail-panel">
+        <div class="flow-pipeline" id="flowPipeline">
+          <div class="flow-stage stage-oeg" id="fpOEG"><span class="count">-</span>OEG</div>
+          <div class="flow-arrow" id="fa1">&#9654;</div>
+          <div class="flow-stage stage-book" id="fpBook"><span class="count">-</span>Book</div>
+          <div class="flow-arrow" id="fa2">&#9654;</div>
+          <div class="flow-stage stage-match" id="fpMatch"><span class="count">-</span>Match</div>
+          <div class="flow-arrow" id="fa3">&#9654;</div>
+          <div class="flow-stage stage-trade" id="fpTrade"><span class="count">-</span>Trade</div>
+          <div class="flow-arrow" id="fa4">&#9654;</div>
+          <div class="flow-stage stage-db" id="fpDB"><span class="count">-</span>DB</div>
+          <div class="flow-arrow" id="fa5">&#9654;</div>
+          <div class="flow-stage stage-ch" id="fpCH"><span class="count">-</span>CH</div>
+        </div>
+        <div class="flow-msgs" id="flowMsgs">
+          <div class="flow-empty">Select an order to see its message path</div>
+        </div>
       </div>
     </div>
   </div>
@@ -336,9 +361,11 @@ border-radius:6px;color:var(--text);font-size:12px}
 const state = {orders:[], trades:[], snapshots:{}, symbols:{}, session:'idle'};
 let chartPeriod = '1h';
 let priceChart = null;
+let volumeChart = null;
 const prevPrices = {};
-const flowCounts = {OEG:0, Book:0, Match:0, Trade:0, DB:0, CH:0};
 let flowEntries = [];
+let flowOrderMap = {};
+let flowSelectedOrder = null;
 let flowStarted = false;
 
 // ── Tab switching ─────────────────────────────────────
@@ -547,18 +574,20 @@ function updateChart(bars, symName) {
   const opens = bars.map(b => b.open);
   const closes = bars.map(b => b.close);
   const volumes = bars.map(b => b.volume);
-  const bgColors = bars.map(b => b.close >= b.open ? '#00d4aa44' : '#ff6b6b44');
+  const volColors = bars.map(b => b.close >= b.open ? '#00d4aa66' : '#ff6b6b66');
 
   if (priceChart) priceChart.destroy();
-  const ctx = document.getElementById('priceChart').getContext('2d');
+  if (volumeChart) volumeChart.destroy();
 
+  // ── Price chart (candles + close line) ──
+  const pCtx = document.getElementById('priceChart').getContext('2d');
   const candlePlugin = {
-    id: 'candlestick',
+    id: 'thinCandle',
     afterDatasetsDraw(chart) {
       const meta = chart.getDatasetMeta(0);
       if (!meta || !meta.data.length) return;
       const yScale = chart.scales.y;
-      const xScale = chart.scales.x;
+      const ctx2 = chart.ctx;
       meta.data.forEach((point, i) => {
         if (i >= bars.length) return;
         const x = point.x;
@@ -567,28 +596,26 @@ function updateChart(bars, symName) {
         const open = yScale.getPixelForValue(opens[i]);
         const close = yScale.getPixelForValue(closes[i]);
         const color = closes[i] >= opens[i] ? '#00d4aa' : '#ff6b6b';
-        const barW = Math.max(4, (xScale.width / bars.length) * 0.6);
-        ctx.save();
-        ctx.strokeStyle = color; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(x, high); ctx.lineTo(x, low); ctx.stroke();
-        ctx.fillStyle = color;
+        ctx2.save();
+        ctx2.strokeStyle = color; ctx2.lineWidth = 1;
+        ctx2.beginPath(); ctx2.moveTo(x, high); ctx2.lineTo(x, low); ctx2.stroke();
+        ctx2.fillStyle = color;
         const top = Math.min(open, close);
         const bot = Math.max(open, close);
-        ctx.fillRect(x - barW/2, top, barW, Math.max(bot - top, 1));
-        ctx.restore();
+        ctx2.fillRect(x - 2, top, 4, Math.max(bot - top, 1));
+        ctx2.restore();
       });
     }
   };
 
-  priceChart = new Chart(ctx, {
+  priceChart = new Chart(pCtx, {
     type: 'line',
     data: {
       labels,
       datasets: [{
-        label: symName + ' Close', data: closes, borderColor: 'transparent',
-        backgroundColor: 'transparent', pointRadius: 0, borderWidth: 0, yAxisID: 'y',
-      },{
-        label: 'Volume', data: volumes, type: 'bar', backgroundColor: bgColors, yAxisID: 'y1',
+        label: symName + ' Close', data: closes,
+        borderColor: '#7c5cfcaa', backgroundColor: 'transparent',
+        pointRadius: 0, borderWidth: 1.5, tension: 0.3,
       }]
     },
     options: {
@@ -600,8 +627,8 @@ function updateChart(bars, symName) {
           callbacks: {
             label: function(c) {
               const i = c.dataIndex;
-              if (c.datasetIndex === 0 && i < bars.length) return 'O:'+fmt(opens[i])+' H:'+fmt(highs[i])+' L:'+fmt(lows[i])+' C:'+fmt(closes[i]);
-              return 'Vol: ' + (volumes[i]||0);
+              if (i < bars.length) return 'O:'+fmt(opens[i])+' H:'+fmt(highs[i])+' L:'+fmt(lows[i])+' C:'+fmt(closes[i]);
+              return '';
             }
           }
         }
@@ -609,10 +636,30 @@ function updateChart(bars, symName) {
       scales: {
         x: {ticks:{color:'#5a6088',maxTicksLimit:10},grid:{color:'#1a1f45'}},
         y: {position:'left',ticks:{color:'#00d4aa'},grid:{color:'#1a1f45'}},
-        y1:{position:'right',ticks:{color:'#4a90d9'},grid:{display:false}},
       }
     },
     plugins: [candlePlugin]
+  });
+
+  // ── Volume chart (bars only) ──
+  const vCtx = document.getElementById('volumeChart').getContext('2d');
+  volumeChart = new Chart(vCtx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Volume', data: volumes, backgroundColor: volColors,
+        borderWidth: 0, borderRadius: 2,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {legend:{display:false}, tooltip:{callbacks:{label:c=>'Vol: '+(c.raw||0)}}},
+      scales: {
+        x: {ticks:{color:'#5a6088',maxTicksLimit:10},grid:{color:'#1a1f45'}},
+        y: {position:'left',ticks:{color:'#4a90d9',maxTicksLimit:3},grid:{color:'#1a1f4566'},beginAtZero:true},
+      }
+    }
   });
 }
 
@@ -679,12 +726,12 @@ async function onAIProviderChange() {
     body: JSON.stringify({provider})});
 }
 
-// ── Message Flow Visualizer ───────────────────────────
+// ── Message Flow Visualizer (Interactive) ────────────
 async function loadFlowLog() {
   if (flowStarted) return;
   flowStarted = true;
   try {
-    const resp = await fetch('/dev/messages?limit=100');
+    const resp = await fetch('/dev/messages?limit=200');
     const msgs = await resp.json();
     msgs.forEach(addFlowEntry);
   } catch(e) {}
@@ -694,37 +741,81 @@ function addFlowEntry(entry) {
   flowEntries.push(entry);
   if (flowEntries.length > 500) flowEntries.shift();
 
-  const stage = entry.stage || '?';
-  if (flowCounts[stage] !== undefined) {
-    flowCounts[stage]++;
-    const el = document.getElementById('flowCnt' + stage);
-    if (el) el.textContent = flowCounts[stage];
+  const oid = entry.orderId;
+  if (oid && oid !== '?') {
+    if (!flowOrderMap[oid]) flowOrderMap[oid] = {entries:[], detail: entry.detail || '', firstTs: entry.timestamp};
+    flowOrderMap[oid].entries.push(entry);
+    renderOrderList();
+    if (flowSelectedOrder === String(oid)) renderOrderDetail(String(oid));
   }
-
-  const log = document.getElementById('flowLog');
-  if (log.querySelector('.muted')) log.innerHTML = '';
-
-  const div = document.createElement('div');
-  div.className = 'flow-entry flow-active';
-  const ts = new Date(entry.timestamp * 1000).toLocaleTimeString();
-  const tagCls = 'flow-tag-' + stage.toLowerCase();
-  div.innerHTML = '<span class="flow-ts">' + ts + '</span>' +
-    '<span class="flow-tag ' + tagCls + '">' + stage + '</span>' +
-    '<span class="flow-detail">' + (entry.detail||'') + '</span>';
-  log.prepend(div);
-
-  while (log.children.length > 200) log.removeChild(log.lastChild);
   document.getElementById('flowCount').textContent = flowEntries.length + ' messages';
+}
+
+function renderOrderList() {
+  const list = document.getElementById('flowOrderList');
+  const keys = Object.keys(flowOrderMap).reverse();
+  if (!keys.length) { list.innerHTML = '<div class="flow-empty">Waiting for orders...</div>'; return; }
+  let html = '';
+  for (const oid of keys.slice(0, 100)) {
+    const o = flowOrderMap[oid];
+    const first = o.entries[0] || {};
+    const stages = [...new Set(o.entries.map(e => e.stage))].join(' > ');
+    const sel = flowSelectedOrder === String(oid) ? ' selected' : '';
+    html += '<div class="flow-order-item' + sel + '" onclick="selectFlowOrder(\'' + oid + '\')">' +
+      '<div><span class="oid">#' + oid + '</span><br><span class="osummary">' + stages + '</span></div>' +
+      '<span class="muted" style="font-size:10px">' + o.entries.length + ' msgs</span></div>';
+  }
+  list.innerHTML = html;
+}
+
+function selectFlowOrder(oid) {
+  flowSelectedOrder = String(oid);
+  renderOrderList();
+  renderOrderDetail(oid);
+}
+
+function renderOrderDetail(oid) {
+  const o = flowOrderMap[oid];
+  if (!o) return;
+  const stages = new Set(o.entries.map(e => e.stage));
+  const stageOrder = ['OEG','Book','Match','Trade','DB','CH'];
+  const reachedIdx = Math.max(...stageOrder.map((s,i) => stages.has(s) ? i : -1));
+
+  stageOrder.forEach((s, i) => {
+    const el = document.getElementById('fp' + s);
+    const cnt = o.entries.filter(e => e.stage === s).length;
+    if (el) {
+      el.classList.toggle('active', stages.has(s));
+      el.querySelector('.count').textContent = stages.has(s) ? cnt : '-';
+    }
+    const arrow = document.getElementById('fa' + (i + 1));
+    if (arrow) arrow.classList.toggle('active', i <= reachedIdx);
+  });
+
+  const msgsEl = document.getElementById('flowMsgs');
+  let html = '';
+  for (const e of o.entries) {
+    const ts = new Date(e.timestamp * 1000).toLocaleTimeString();
+    const tagCls = 'flow-tag-' + (e.stage || '').toLowerCase();
+    html += '<div class="flow-entry">' +
+      '<span class="flow-ts">' + ts + '</span>' +
+      '<span class="flow-tag ' + tagCls + '">' + (e.stage||'') + '</span>' +
+      '<span class="flow-detail">' + (e.detail||'') + '</span></div>';
+  }
+  msgsEl.innerHTML = html || '<div class="flow-empty">No messages</div>';
 }
 
 function clearFlowLog() {
   flowEntries = [];
-  Object.keys(flowCounts).forEach(k => flowCounts[k] = 0);
-  document.getElementById('flowLog').innerHTML = '<div class="muted" style="padding:20px;text-align:center">Log cleared</div>';
+  flowOrderMap = {};
+  flowSelectedOrder = null;
+  document.getElementById('flowOrderList').innerHTML = '<div class="flow-empty">Log cleared</div>';
+  document.getElementById('flowMsgs').innerHTML = '<div class="flow-empty">Select an order to see its message path</div>';
   ['OEG','Book','Match','Trade','DB','CH'].forEach(s => {
-    const el = document.getElementById('flowCnt'+s);
-    if (el) el.textContent = '0';
+    const el = document.getElementById('fp' + s);
+    if (el) { el.classList.remove('active'); el.querySelector('.count').textContent = '-'; }
   });
+  for (let i = 1; i <= 5; i++) { const a = document.getElementById('fa'+i); if (a) a.classList.remove('active'); }
   document.getElementById('flowCount').textContent = '0 messages';
 }
 

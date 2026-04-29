@@ -197,7 +197,7 @@ def api_member(member_id):
 def api_set_strategy(member_id):
     d = request.json
     strategy = d.get("strategy", "random")
-    if strategy not in ("momentum", "mean_revert", "random"):
+    if strategy not in ("momentum", "mean_revert", "random", "llm"):
         return jsonify({"error": "Invalid strategy"}), 400
     ai_trader.set_strategy(member_id, strategy)
     return jsonify({"member_id": member_id, "strategy": strategy})
@@ -215,6 +215,14 @@ def api_control():
     elif action == "resume":
         ai_trader.resume()
     return jsonify({"action": action, "status": "ok"})
+
+@app.route("/api/explanations")
+def api_explanations():
+    member_id = request.args.get("member_id")
+    items = list(ai_trader.explanations)
+    if member_id:
+        items = [e for e in items if e["member_id"] == member_id]
+    return jsonify(items[-20:])
 
 @app.route("/api/config")
 def api_config():

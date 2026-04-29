@@ -17,6 +17,7 @@ import urllib.request
 import urllib.error
 import sys
 import os
+from collections import deque
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -26,6 +27,14 @@ from shared.config import (
 from clearing_house.ch_database import (
     get_member, get_holdings, get_daily_stats, record_trade,
 )
+
+
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2:3b")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
+HF_TOKEN = os.environ.get("HF_TOKEN", "")
+HF_MODEL = os.environ.get("HF_MODEL", "Qwen/Qwen2.5-7B-Instruct")
 
 
 class AITrader:
@@ -39,6 +48,7 @@ class AITrader:
         self._seq = 0
         self._thread = None
         self._trade_thread = None
+        self.explanations = deque(maxlen=100)
 
     def start(self):
         self.running = True
@@ -121,6 +131,8 @@ class AITrader:
             order = self._strategy_momentum(member, holdings_map, bbos)
         elif strategy == "mean_revert":
             order = self._strategy_mean_revert(member, holdings_map, bbos)
+        elif strategy == "llm":
+            order = self._strategy_llm(member_id, member, holdings_map, bbos)
         else:
             order = self._strategy_random(member, holdings_map, bbos)
 
@@ -258,6 +270,146 @@ class AITrader:
             if price <= 0:
                 return None
             return {"symbol": sym, "side": side, "price": round(price * 0.998, 2), "quantity": qty}
+
+    def _strategy_llm(self, member_id, member, holdings_map, bbos):
+        portfolio_lines = []
+        for sym, h in holdings_map.items():
+            bbo = bbos.get(sym, {})
+            cur_price = bbo.get("lastPrice", h["avg_cost"])
+            pnl = (cur_price - h["avg_cost"]) * h["quantity"]
+            portfolio_lines.append(f"  {sym}: {h['quantity']} shares @ avg {h['avg_cost']:.2f}, "
+                                   f"current {cur_price:.2f}, P&L {pnl:+.2f}")
+
+        market_lines = []
+        for sym, bbo in bbos.items():
+            prices = self.price_history.get(sym, [])
+            trend = ""
+            if len(prices) >= 3:
+                r = prices[-5:]
+                change = ((r[-1] - r[0]) / r[0] * 100) if r[0] > 0 else 0
+                trend = f", trend {change:+.1f}%"
+            market_lines.append(f"  {sym}: bid={bbo.get('bestBid',0):.2f} ask={bbo.get('bestAsk',0):.2f} "
+                                f"last={bbo.get('lastPrice',0):.2f}{trend}")
+
+        prompt = (
+            f"You are an algorithmic trader for member {member_id}.\n"
+            f"Capital: {member['capital']:.2f}\n"
+            f"Portfolio:\n" + ("\n".join(portfolio_lines) or "  (empty)") + "\n"
+            f"Market data:\n" + "\n".join(market_lines) + "\n\n"
+            f"Decide ONE trade. Respond with ONLY a JSON object:\n"
+            f'{{"symbol":"SYM","side":"Buy"|"Sell","quantity":N,"price":P,"reason":"brief explanation"}}\n'
+            f"If no good trade exists, respond: {{}}\n"
+            f"Rules: Buy cost cannot exceed 10% of capital. Only sell what you hold."
+        )
+
+        try:
+            text = self._call_llm(prompt)
+            text = text.strip()
+            start = text.find('{')
+            end = text.rfind('}')
+            if start < 0 or end < 0:
+                return None
+            parsed = json.loads(text[start:end+1])
+            if not parsed.get("symbol"):
+                return None
+
+            reason = parsed.get("reason", "LLM decision")
+            self.explanations.append({
+                "timestamp": time.time(),
+                "member_id": member_id,
+                "action": f"{parsed.get('side','')} {parsed.get('quantity',0)} {parsed['symbol']} @ {parsed.get('price',0)}",
+                "reason": reason,
+            })
+
+            sym = parsed["symbol"]
+            side = parsed.get("side", "Buy")
+            qty = int(parsed.get("quantity", 10))
+            price = float(parsed.get("price", 0))
+
+            if side == "Buy" and qty * price > member["capital"] * 0.1:
+                qty = max(1, int(member["capital"] * 0.1 / price))
+            if side == "Sell":
+                held = holdings_map.get(sym)
+                if not held or held["quantity"] <= 0:
+                    return None
+                qty = min(qty, held["quantity"])
+
+            if price <= 0 or qty <= 0:
+                return None
+            return {"symbol": sym, "side": side, "price": round(price, 2), "quantity": qty}
+
+        except Exception as e:
+            print(f"[CH-AI] LLM strategy failed for {member_id}: {e}")
+            return self._strategy_random(member, holdings_map, bbos)
+
+    def _call_llm(self, prompt):
+        text = self._try_ollama(prompt)
+        if text:
+            return text
+        text = self._try_groq(prompt)
+        if text:
+            return text
+        text = self._try_hf(prompt)
+        if text:
+            return text
+        raise RuntimeError("All LLM providers failed")
+
+    def _try_ollama(self, prompt):
+        try:
+            body = json.dumps({
+                "model": OLLAMA_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": False,
+            }).encode()
+            req = urllib.request.Request(
+                f"{OLLAMA_HOST}/api/chat", data=body,
+                headers={"Content-Type": "application/json"}, method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read())
+                return data.get("message", {}).get("content", "")
+        except Exception:
+            return None
+
+    def _try_groq(self, prompt):
+        if not GROQ_API_KEY:
+            return None
+        try:
+            body = json.dumps({
+                "model": GROQ_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 200,
+            }).encode()
+            req = urllib.request.Request(
+                "https://api.groq.com/openai/v1/chat/completions", data=body,
+                headers={"Content-Type": "application/json",
+                          "Authorization": f"Bearer {GROQ_API_KEY}"}, method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read())
+                return data["choices"][0]["message"]["content"]
+        except Exception:
+            return None
+
+    def _try_hf(self, prompt):
+        if not HF_TOKEN:
+            return None
+        try:
+            body = json.dumps({
+                "model": HF_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 200, "stream": False,
+            }).encode()
+            req = urllib.request.Request(
+                "https://api-inference.huggingface.co/v1/chat/completions", data=body,
+                headers={"Content-Type": "application/json",
+                          "Authorization": f"Bearer {HF_TOKEN}"}, method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                data = json.loads(resp.read())
+                return data["choices"][0]["message"]["content"]
+        except Exception:
+            return None
 
     def _submit_order(self, member_id, order):
         self._seq += 1
