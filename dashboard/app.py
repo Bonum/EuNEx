@@ -654,11 +654,13 @@ def _try_ollama(prompt, model=None):
             f"{OLLAMA_HOST}/api/chat",
             data=data,
             headers={"Content-Type": "application/json"},
+            method="POST",
         )
-        with urllib.request.urlopen(req, timeout=90) as resp:
+        with urllib.request.urlopen(req, timeout=120) as resp:
             result = json.loads(resp.read())
             return result.get("message", {}).get("content", "")
-    except Exception:
+    except Exception as e:
+        print(f"[AI] Ollama error: {e}")
         return None
 
 
@@ -748,6 +750,19 @@ def _generate_insight():
             }
             ai_insights.append(insight)
             broadcast_event("ai_insight", insight)
+        else:
+            broadcast_event("ai_insight", {
+                "text": "LLM call failed. Check that Ollama is running, or set GROQ_API_KEY / HF_TOKEN.",
+                "timestamp": time.time(),
+                "source": "error",
+            })
+    except Exception as e:
+        print(f"[AI] Generate insight error: {e}")
+        broadcast_event("ai_insight", {
+            "text": f"Error: {e}",
+            "timestamp": time.time(),
+            "source": "error",
+        })
     finally:
         ai_generating = False
 
@@ -784,6 +799,31 @@ def ai_select():
     ai_provider = d.get("provider", "auto")
     ai_model_override = d.get("model") or None
     return jsonify({"provider": ai_provider, "model": ai_model_override})
+
+
+@app.route("/ai/ollama/models")
+def ai_ollama_models():
+    try:
+        req = urllib.request.Request(f"{OLLAMA_HOST}/api/tags", method="GET")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+            models = [m["name"] for m in data.get("models", [])]
+            return jsonify({"models": models, "current": ai_model_override or OLLAMA_MODEL,
+                            "status": "connected"})
+    except Exception as e:
+        return jsonify({"models": [], "current": OLLAMA_MODEL, "status": "disconnected",
+                        "error": str(e)})
+
+
+@app.route("/ai/ollama/health")
+def ai_ollama_health():
+    try:
+        with urllib.request.urlopen(f"{OLLAMA_HOST}/api/tags", timeout=3) as resp:
+            data = json.loads(resp.read())
+            models = [m["name"] for m in data.get("models", [])]
+            return jsonify({"ok": True, "models": models})
+    except Exception:
+        return jsonify({"ok": False, "models": []})
 
 
 # ── Developer Message Flow Log ─────────────────────────────────────

@@ -365,10 +365,11 @@ class AITrader:
                 f"{OLLAMA_HOST}/api/chat", data=body,
                 headers={"Content-Type": "application/json"}, method="POST",
             )
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            with urllib.request.urlopen(req, timeout=120) as resp:
                 data = json.loads(resp.read())
                 return data.get("message", {}).get("content", "")
-        except Exception:
+        except Exception as e:
+            print(f"[CH-AI] Ollama error: {e}")
             return None
 
     def _try_groq(self, prompt):

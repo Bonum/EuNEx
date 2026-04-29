@@ -39,7 +39,7 @@ cursor:pointer;font-size:13px;font-weight:600;transition:all .2s}
 .tab-content.active{display:block}
 
 /* ── Ticker tape ─────────────────────────────────────── */
-.ticker-wrap{background:linear-gradient(90deg,#1a2248,#0f1a3d,#1a2248);border-top:1px solid var(--accent);border-bottom:1px solid var(--accent);overflow:hidden;height:32px;position:relative}
+.ticker-wrap{background:#162040;border-top:2px solid #00d4aa55;border-bottom:2px solid #00d4aa55;overflow:hidden;height:34px;position:relative;box-shadow:0 2px 8px rgba(0,212,170,.1)}
 .ticker-track{display:flex;align-items:center;height:100%;white-space:nowrap;animation:tickerScroll 30s linear infinite}
 .ticker-track:hover{animation-play-state:paused}
 @keyframes tickerScroll{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
@@ -108,6 +108,10 @@ border-radius:6px;color:var(--text);font-size:12px}
 .ai-controls select{padding:4px 8px;background:#1a1f45;border:1px solid var(--border);border-radius:4px;color:var(--muted);font-size:11px}
 .ai-badge{font-size:10px;padding:2px 8px;border-radius:8px;background:#7c5cfc22;color:var(--purple);font-weight:600}
 .ai-status{font-size:11px;color:var(--muted)}
+.ai-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}
+.ai-dot-ok{background:#00d4aa;box-shadow:0 0 6px #00d4aa}
+.ai-dot-err{background:#ff6b6b;box-shadow:0 0 6px #ff6b6b}
+.ai-dot-checking{background:#f0c040;box-shadow:0 0 6px #f0c040}
 .insight-card{border-left:3px solid var(--purple);background:#1a1f4566;padding:10px 14px;margin-bottom:8px;border-radius:0 6px 6px 0;animation:fadeIn .4s ease}
 .insight-time{font-size:10px;color:var(--muted);margin-bottom:4px;display:flex;gap:8px;align-items:center}
 .insight-src{font-size:9px;padding:1px 6px;border-radius:4px;background:#7c5cfc22;color:var(--purple)}
@@ -285,11 +289,14 @@ border-radius:6px;color:var(--text);font-size:12px}
   <div class="ai-panel">
     <h3>AI Market Analyst
       <div class="ai-controls">
+        <span class="ai-dot ai-dot-checking" id="aiDot" title="Checking..."></span>
         <select id="aiProvider" onchange="onAIProviderChange()">
           <option value="auto">Auto</option>
           <option value="ollama">Ollama</option>
           <option value="groq">Groq</option>
           <option value="hf">HuggingFace</option>
+        </select>
+        <select id="aiModelSelect" onchange="onAIModelChange()" style="display:none">
         </select>
         <span class="ai-badge" id="aiBadge">auto</span>
         <button class="btn-purple" id="aiGenerateBtn" onclick="triggerAI()">Generate Analysis</button>
@@ -391,8 +398,10 @@ async function init() {
   loadChart();
   loadLeaderboard();
   connectSSE();
+  checkOllamaHealth();
   setInterval(loadChart, 15000);
   setInterval(loadLeaderboard, 10000);
+  setInterval(checkOllamaHealth, 30000);
 }
 
 function populateSymbolSelectors() {
@@ -649,7 +658,8 @@ function updateChart(bars, symName) {
       labels,
       datasets: [{
         label: 'Volume', data: volumes, backgroundColor: volColors,
-        borderWidth: 0, borderRadius: 2,
+        borderWidth: 0, borderRadius: 1,
+        barPercentage: 0.3, categoryPercentage: 0.5, maxBarThickness: 6,
       }]
     },
     options: {
@@ -704,12 +714,16 @@ function addInsightCard(insight) {
   if (el.querySelector('.muted')) el.innerHTML = '';
   const div = document.createElement('div');
   div.className = 'insight-card';
+  if (insight.source === 'error') div.style.borderLeftColor = 'var(--red)';
   const t = new Date(insight.timestamp * 1000).toLocaleTimeString();
   div.innerHTML = '<div class="insight-time">' + t +
     ' <span class="insight-src">' + (insight.source||'') + '</span></div>' +
     '<div class="insight-text">' + insight.text + '</div>';
   el.prepend(div);
   while (el.children.length > 10) el.removeChild(el.lastChild);
+  const btn = document.getElementById('aiGenerateBtn');
+  btn.disabled = false; btn.textContent = 'Generate Analysis';
+  document.getElementById('aiStatus').textContent = 'Last: ' + new Date().toLocaleTimeString();
 }
 
 async function triggerAI() {
@@ -722,8 +736,57 @@ async function triggerAI() {
 async function onAIProviderChange() {
   const provider = document.getElementById('aiProvider').value;
   document.getElementById('aiBadge').textContent = provider;
+  const modelSel = document.getElementById('aiModelSelect');
+  if (provider === 'ollama') {
+    modelSel.style.display = '';
+    loadOllamaModels();
+  } else {
+    modelSel.style.display = 'none';
+  }
+  const model = modelSel.style.display === 'none' ? null : modelSel.value || null;
   await fetch('/ai/select', {method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({provider})});
+    body: JSON.stringify({provider, model})});
+}
+
+async function onAIModelChange() {
+  const model = document.getElementById('aiModelSelect').value;
+  const provider = document.getElementById('aiProvider').value;
+  await fetch('/ai/select', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({provider, model})});
+}
+
+async function loadOllamaModels() {
+  try {
+    const resp = await fetch('/ai/ollama/models');
+    const data = await resp.json();
+    const sel = document.getElementById('aiModelSelect');
+    sel.innerHTML = '';
+    for (const m of data.models) {
+      const o = document.createElement('option');
+      o.value = m; o.textContent = m;
+      if (m === data.current) o.selected = true;
+      sel.appendChild(o);
+    }
+    if (data.models.length > 0) sel.style.display = '';
+  } catch(e) {}
+}
+
+async function checkOllamaHealth() {
+  const dot = document.getElementById('aiDot');
+  try {
+    const resp = await fetch('/ai/ollama/health');
+    const data = await resp.json();
+    if (data.ok) {
+      dot.className = 'ai-dot ai-dot-ok';
+      dot.title = 'Ollama connected (' + data.models.join(', ') + ')';
+    } else {
+      dot.className = 'ai-dot ai-dot-err';
+      dot.title = 'Ollama not reachable';
+    }
+  } catch(e) {
+    dot.className = 'ai-dot ai-dot-err';
+    dot.title = 'Ollama not reachable';
+  }
 }
 
 // ── Message Flow Visualizer (Interactive) ────────────
