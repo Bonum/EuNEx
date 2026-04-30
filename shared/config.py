@@ -4,6 +4,20 @@ EuNEx shared configuration — centralized settings for all Python services.
 
 import os
 
+# Load .env from project root if python-dotenv is available
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+except ImportError:
+    _env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
+    if os.path.isfile(_env_path):
+        with open(_env_path) as _f:
+            for _line in _f:
+                _line = _line.strip()
+                if _line and not _line.startswith("#") and "=" in _line:
+                    _k, _, _v = _line.partition("=")
+                    os.environ.setdefault(_k.strip(), _v.strip())
+
 # ── Service ports ──────────────────────────────────────────────────
 DASHBOARD_PORT = int(os.environ.get("EUNEX_DASHBOARD_PORT", 8090))
 FIX_PORT = int(os.environ.get("EUNEX_FIX_PORT", 9001))
