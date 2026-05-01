@@ -141,14 +141,58 @@ python fix_gateway/fix_server.py test
 Supports: NewOrderSingle (35=D), OrderCancelRequest (35=F),
 OrderCancelReplaceRequest (35=G), ExecutionReport (35=8).
 
+## Configuration (.env)
+
+All Python services auto-load settings from `.env` in the project root.
+No extra packages needed — `shared/config.py` parses it at startup.
+
+```bash
+# .env — LLM and service configuration
+LLM_PROVIDER=auto              # ollama | groq | hf | auto (try all)
+OLLAMA_HOST=http://localhost:11434
+OLLAMA_MODEL=llama3.1
+HF_MODEL=Qwen/Qwen2.5-7B-Instruct
+# HF_TOKEN=hf_...              # or auto-discovered from ~/.cache/huggingface/token
+# GROQ_API_KEY=gsk_...
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LLM_PROVIDER` | `auto` | LLM backend: `ollama`, `groq`, `hf`, or `auto` (tries all in order) |
+| `OLLAMA_HOST` | `http://localhost:11434` | Ollama server URL |
+| `OLLAMA_MODEL` | `llama3.1` | Ollama model name |
+| `HF_TOKEN` | *(auto-discovered)* | HuggingFace API token; reads `~/.cache/huggingface/token` if not set |
+| `HF_MODEL` | `Qwen/Qwen2.5-7B-Instruct` | HuggingFace model (free tier) |
+| `GROQ_API_KEY` | *(empty)* | Groq Cloud API key |
+| `GROQ_MODEL` | `llama-3.1-8b-instant` | Groq model name |
+| `EUNEX_DASHBOARD_PORT` | `8090` | Dashboard HTTP port |
+| `EUNEX_CH_PORT` | `8091` | Clearing House HTTP port |
+| `EUNEX_FIX_PORT` | `9001` | FIX Gateway TCP port |
+| `EUNEX_KAFKA_BROKERS` | `localhost:9092` | Kafka broker address |
+
+## AI Market Analyst
+
+The Dashboard includes an AI-powered market analyst that generates real-time
+commentary on trading activity. It uses a fallback chain of LLM providers:
+
+1. **Ollama** (local) — best for development, requires [Ollama](https://ollama.ai) installed
+2. **Groq** (cloud) — fast inference, requires `GROQ_API_KEY`
+3. **HuggingFace** (cloud) — free tier with `HF_TOKEN`, uses Qwen 2.5 7B
+
+The dashboard shows a green/red status dot and lets you select the active
+Ollama model from a dropdown. Set `LLM_PROVIDER=auto` to try all providers
+in order until one succeeds.
+
 ## Clearing House
 
-10 AI trading members (MBR01-MBR10) with 3 strategies:
+10 AI trading members (MBR01-MBR10) with 4 strategies:
 - **Momentum**: follow price trends
 - **Mean Reversion**: fade price moves
 - **Random**: noise trading
+- **LLM**: AI-driven decisions with natural language explanations (uses same provider chain)
 
-Features: capital tracking, holdings per symbol, P&L, leaderboard.
+Features: capital tracking, holdings per symbol, P&L, leaderboard,
+strategy selection per member, LLM trading explanations panel.
 
 ## Project Structure
 
@@ -188,7 +232,8 @@ EuNEx/
 │   ├── ch_database.py                  # SQLite (members, holdings)
 │   ├── ch_ai_trader.py                 # AI trading strategies
 │   └── templates/                      # CH web UI
-├── shared/config.py                    # Centralized configuration
+├── .env                                # LLM and service configuration
+├── shared/config.py                    # Centralized configuration (auto-loads .env)
 ├── docker/
 │   ├── docker-compose.yml              # Kafka + EuNEx (all services)
 │   ├── Dockerfile                      # Multi-stage Linux build
