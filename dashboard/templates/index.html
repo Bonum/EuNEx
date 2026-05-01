@@ -75,6 +75,23 @@ border-radius:6px;color:var(--text);font-size:12px}
 .order-buttons{display:flex;gap:8px;margin-top:10px}
 .order-buttons button{flex:1;padding:10px;font-size:14px}
 
+/* ── Engine toggle ──────────────────────────────────────── */
+.engine-toggle{display:flex;align-items:center;gap:8px;margin-left:12px;padding-left:12px;border-left:1px solid var(--border)}
+.engine-toggle label{font-size:11px;color:var(--muted);font-weight:600;cursor:default}
+.engine-switch{position:relative;width:56px;height:26px;cursor:pointer}
+.engine-switch input{display:none}
+.engine-slider{position:absolute;inset:0;background:#1a1f45;border:1px solid var(--border);border-radius:13px;transition:.3s}
+.engine-slider::before{content:"";position:absolute;width:20px;height:20px;left:2px;top:2px;background:var(--accent);border-radius:50%;transition:.3s}
+.engine-switch input:checked + .engine-slider{background:#7c5cfc22;border-color:#7c5cfc}
+.engine-switch input:checked + .engine-slider::before{transform:translateX(30px);background:var(--purple)}
+.engine-label{font-size:11px;font-weight:700;min-width:38px}
+.engine-label-py{color:var(--accent)}
+.engine-label-cpp{color:var(--purple)}
+.engine-dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:2px}
+.engine-dot-on{background:#00d4aa;box-shadow:0 0 4px #00d4aa}
+.engine-dot-off{background:#ff6b6b;box-shadow:0 0 4px #ff6b6b}
+.engine-dot-unknown{background:var(--muted)}
+
 .ob-row{display:flex;align-items:center;margin:1px 0;font-size:11px;position:relative}
 .ob-bar{position:absolute;top:0;bottom:0;opacity:.15;border-radius:3px}
 .ob-bar-bid{background:var(--bid);right:0}.ob-bar-ask{background:var(--ask);left:0}
@@ -171,6 +188,16 @@ border-radius:6px;color:var(--text);font-size:12px}
     <button class="btn-yellow" onclick="sessionAction('suspend')">Suspend</button>
     <button class="btn-green" onclick="sessionAction('resume')">Resume</button>
     <button class="btn-red" onclick="sessionAction('end')">End Day</button>
+    <div class="engine-toggle">
+      <label>Engine:</label>
+      <span id="engineLabelL" class="engine-label engine-label-py">Python</span>
+      <label class="engine-switch" title="Switch between Python and C++ matching engine">
+        <input type="checkbox" id="engineSwitch" onchange="toggleEngine(this.checked)">
+        <span class="engine-slider"></span>
+      </label>
+      <span id="engineLabelR" class="engine-label engine-label-cpp">C++</span>
+      <span id="engineDot" class="engine-dot engine-dot-unknown" title="C++ engine status"></span>
+    </div>
   </div>
 </div>
 
@@ -389,6 +416,7 @@ async function init() {
   const resp = await fetch('/data');
   const d = await resp.json();
   Object.assign(state, d);
+  if (d.engine_mode) updateEngineUI(d.engine_mode);
   for (const [sid, info] of Object.entries(state.symbols)) {
     prevPrices[sid] = info.startPrice || 0;
   }
@@ -399,6 +427,7 @@ async function init() {
   loadLeaderboard();
   connectSSE();
   checkOllamaHealth();
+  checkCppEngine();
   setInterval(loadChart, 15000);
   setInterval(loadLeaderboard, 10000);
   setInterval(checkOllamaHealth, 30000);
@@ -456,6 +485,10 @@ function connectSSE() {
   es.addEventListener('msgflow', e => {
     const entry = JSON.parse(e.data);
     addFlowEntry(entry);
+  });
+  es.addEventListener('engine_mode', e => {
+    const d = JSON.parse(e.data);
+    updateEngineUI(d.mode);
   });
 }
 
@@ -926,6 +959,67 @@ function updateOrderPrice() {
 }
 
 function fmt(v) { return v > 0 ? parseFloat(v).toFixed(2) : '-'; }
+
+// ── Engine toggle ──────────────────────────────────────────
+async function toggleEngine(useCpp) {
+  const mode = useCpp ? 'cpp' : 'python';
+  const sw = document.getElementById('engineSwitch');
+  try {
+    const resp = await fetch('/engine/mode', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({mode})
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      alert('C++ engine not available:\n' + (data.error || 'Connection failed') +
+            '\n\nStart eunex_me first:\n  ./build/Release/eunex_me');
+      sw.checked = false;
+      updateEngineUI('python');
+      return;
+    }
+    updateEngineUI(data.mode);
+  } catch(e) {
+    alert('Failed to switch engine: ' + e.message);
+    sw.checked = false;
+    updateEngineUI('python');
+  }
+}
+
+function updateEngineUI(mode) {
+  const sw = document.getElementById('engineSwitch');
+  const labelL = document.getElementById('engineLabelL');
+  const labelR = document.getElementById('engineLabelR');
+  sw.checked = (mode === 'cpp');
+  if (mode === 'cpp') {
+    labelL.style.opacity = '0.4';
+    labelR.style.opacity = '1';
+  } else {
+    labelL.style.opacity = '1';
+    labelR.style.opacity = '0.4';
+  }
+}
+
+async function checkCppEngine() {
+  try {
+    const resp = await fetch('/engine/mode');
+    const data = await resp.json();
+    const dot = document.getElementById('engineDot');
+    updateEngineUI(data.mode);
+    if (data.cpp_available) {
+      dot.className = 'engine-dot engine-dot-on';
+      dot.title = 'C++ engine running on ' + data.cpp_host + ':' + data.cpp_port;
+    } else {
+      dot.className = 'engine-dot engine-dot-off';
+      dot.title = 'C++ engine not detected (port ' + data.cpp_port + ')';
+    }
+  } catch(e) {
+    document.getElementById('engineDot').className = 'engine-dot engine-dot-unknown';
+  }
+}
+
+checkCppEngine();
+setInterval(checkCppEngine, 15000);
 
 init();
 </script>

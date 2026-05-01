@@ -36,7 +36,9 @@ from dashboard.database import (
     save_daily_close, get_last_closing_prices, get_daily_closes,
 )
 from datetime import date
-from shared.config import SYMBOLS, DASHBOARD_PORT, DASHBOARD_DB, CH_URL, SIM_INTERVAL, SIM_ORDERS_PER_ROUND
+import socket
+
+from shared.config import SYMBOLS, DASHBOARD_PORT, DASHBOARD_DB, CH_URL, FIX_PORT, SIM_INTERVAL, SIM_ORDERS_PER_ROUND
 
 app = Flask(__name__)
 
@@ -267,6 +269,299 @@ class MatchingEngine:
 
 engine = MatchingEngine()
 
+# ── C++ Engine Bridge (FIX 4.4 TCP) ──────────────────────────────────
+
+engine_mode = "python"  # "python" or "cpp"
+
+SOH = "\x01"
+
+class CppEngineBridge:
+    def __init__(self, host="localhost", port=FIX_PORT):
+        self.host = host
+        self.port = port
+        self._sock = None
+        self._lock = threading.Lock()
+        self._seq = 1
+        self._recv_thread = None
+        self._connected = False
+        self._pending = {}
+
+    def connect(self):
+        with self._lock:
+            if self._connected:
+                return True
+            try:
+                self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self._sock.settimeout(5)
+                self._sock.connect((self.host, self.port))
+                self._sock.settimeout(None)
+                self._connected = True
+                self._seq = 1
+                self._send_logon()
+                self._recv_thread = threading.Thread(target=self._recv_loop, daemon=True)
+                self._recv_thread.start()
+                print(f"[CPP] Connected to C++ engine at {self.host}:{self.port}")
+                return True
+            except Exception as e:
+                print(f"[CPP] Connection failed: {e}")
+                self._connected = False
+                self._sock = None
+                return False
+
+    def disconnect(self):
+        with self._lock:
+            if self._sock:
+                try:
+                    self._send_logout()
+                    self._sock.close()
+                except Exception:
+                    pass
+                self._sock = None
+                self._connected = False
+                print("[CPP] Disconnected from C++ engine")
+
+    def is_healthy(self):
+        if self._connected:
+            return True
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(2)
+            s.connect((self.host, self.port))
+            s.close()
+            return True
+        except Exception:
+            return False
+
+    def submit_order(self, symbol_id, side, order_type, price, quantity,
+                     tif="Day", source="dashboard", cl_ord_id=""):
+        global next_order_id
+        oid = next_order_id
+        next_order_id += 1
+        cl_ord_id = cl_ord_id or f"D-{oid}"
+
+        sym_name = symbols.get(symbol_id, {}).get("name", "???")
+        fix_side = "1" if side == "Buy" else "2"
+        fix_type = "1" if order_type == "Market" else "2"
+        fix_tif = {"Day": "0", "GTC": "1", "IOC": "3", "FOK": "4"}.get(tif, "0")
+
+        fields = {
+            35: "D",
+            49: f"DASHBOARD-{source}",
+            56: "EUNEX",
+            11: cl_ord_id,
+            55: sym_name,
+            54: fix_side,
+            40: fix_type,
+            44: f"{price:.2f}",
+            38: str(quantity),
+            59: fix_tif,
+        }
+
+        order = {
+            "orderId": oid,
+            "clOrdId": cl_ord_id,
+            "symbolIdx": symbol_id,
+            "symbol": sym_name,
+            "side": side,
+            "orderType": order_type,
+            "price": price,
+            "quantity": quantity,
+            "remainingQty": quantity,
+            "status": "New",
+            "tif": tif,
+            "source": source,
+            "timestamp": time.time(),
+        }
+
+        if self._connected:
+            self._pending[cl_ord_id] = order
+            self._send_fix(fields)
+        else:
+            order["status"] = "Rejected"
+            order["remainingQty"] = quantity
+
+        with state_lock:
+            orders.append(order)
+        save_order(db_path, order)
+        broadcast_event("order", order)
+        return order
+
+    def cancel_order(self, order_id):
+        with state_lock:
+            target = None
+            for o in orders:
+                if o["orderId"] == order_id and o["status"] in ("New", "PartiallyFilled"):
+                    target = o
+                    break
+        if not target:
+            return None
+
+        fields = {
+            35: "F",
+            49: "DASHBOARD",
+            56: "EUNEX",
+            11: f"CXL-{order_id}-{int(time.time()*1000)}",
+            41: target["clOrdId"],
+            55: target["symbol"],
+            54: "1" if target["side"] == "Buy" else "2",
+            38: str(target["remainingQty"]),
+        }
+        if self._connected:
+            self._send_fix(fields)
+        with state_lock:
+            target["status"] = "Cancelled"
+        save_order(db_path, target)
+        broadcast_event("order", target)
+        return target
+
+    def amend_order(self, order_id, new_price=None, new_quantity=None):
+        with state_lock:
+            target = None
+            for o in orders:
+                if o["orderId"] == order_id and o["status"] in ("New", "PartiallyFilled"):
+                    target = o
+                    break
+        if not target:
+            return None
+
+        fields = {
+            35: "G",
+            49: "DASHBOARD",
+            56: "EUNEX",
+            11: f"AMD-{order_id}-{int(time.time()*1000)}",
+            41: target["clOrdId"],
+            55: target["symbol"],
+            54: "1" if target["side"] == "Buy" else "2",
+            44: f"{(new_price if new_price is not None else target['price']):.2f}",
+            38: str(new_quantity if new_quantity is not None else target["quantity"]),
+        }
+        if self._connected:
+            self._send_fix(fields)
+        with state_lock:
+            if new_price is not None:
+                target["price"] = new_price
+            if new_quantity is not None:
+                target["quantity"] = new_quantity
+                target["remainingQty"] = new_quantity
+        save_order(db_path, target)
+        broadcast_event("order", target)
+        return target
+
+    def _send_fix(self, fields):
+        fields[34] = str(self._seq)
+        self._seq += 1
+        fields[52] = time.strftime("%Y%m%d-%H:%M:%S")
+        body_parts = []
+        for tag, val in fields.items():
+            if tag not in (8, 9, 10):
+                body_parts.append(f"{tag}={val}")
+        body = SOH.join(body_parts)
+        header = f"8=FIX.4.4{SOH}9={len(body) + 1}{SOH}"
+        msg = header + body + SOH
+        checksum = sum(ord(c) for c in msg) % 256
+        raw = msg + f"10={checksum:03d}{SOH}"
+        with self._lock:
+            try:
+                self._sock.sendall(raw.encode())
+            except Exception as e:
+                print(f"[CPP] Send error: {e}")
+                self._connected = False
+
+    def _send_logon(self):
+        self._send_fix({35: "A", 49: "DASHBOARD", 56: "EUNEX", 98: "0", 108: "30"})
+
+    def _send_logout(self):
+        self._send_fix({35: "5", 49: "DASHBOARD", 56: "EUNEX"})
+
+    def _recv_loop(self):
+        buf = ""
+        while self._connected:
+            try:
+                data = self._sock.recv(4096)
+                if not data:
+                    break
+                buf += data.decode("ascii", errors="replace")
+                while "10=" in buf:
+                    end = buf.find(SOH, buf.find("10="))
+                    if end < 0:
+                        break
+                    msg_raw = buf[:end + 1]
+                    buf = buf[end + 1:]
+                    self._handle_fix_msg(msg_raw)
+            except Exception as e:
+                if self._connected:
+                    print(f"[CPP] Recv error: {e}")
+                break
+        self._connected = False
+
+    def _handle_fix_msg(self, raw):
+        fields = {}
+        for pair in raw.split(SOH):
+            if "=" in pair:
+                tag, val = pair.split("=", 1)
+                try:
+                    fields[int(tag)] = val
+                except ValueError:
+                    pass
+
+        msg_type = fields.get(35)
+        if msg_type == "8":  # ExecutionReport
+            self._handle_exec_report(fields)
+        elif msg_type == "0":  # Heartbeat
+            pass
+
+    def _handle_exec_report(self, fields):
+        cl_ord_id = fields.get(11, "")
+        exec_type = fields.get(150, "")
+        symbol = fields.get(55, "")
+        side = "Buy" if fields.get(54) == "1" else "Sell"
+        last_px = float(fields.get(31, 0))
+        last_qty = int(fields.get(32, 0))
+        leaves_qty = int(fields.get(151, 0))
+
+        order = self._pending.get(cl_ord_id)
+        if order:
+            order["remainingQty"] = leaves_qty
+            if exec_type == "2":  # Fill
+                order["status"] = "Filled"
+            elif exec_type == "1":  # Partial
+                order["status"] = "PartiallyFilled"
+            elif exec_type == "4":  # Cancelled
+                order["status"] = "Cancelled"
+            elif exec_type == "8":  # Rejected
+                order["status"] = "Rejected"
+            save_order(db_path, order)
+            broadcast_event("order", order)
+
+        if exec_type in ("1", "2") and last_qty > 0:
+            sym_id = None
+            for sid, info in symbols.items():
+                if info["name"] == symbol:
+                    sym_id = sid
+                    break
+            trade = {
+                "tradeId": len(trades) + 1,
+                "symbolIdx": sym_id or 0,
+                "symbol": symbol,
+                "price": last_px,
+                "quantity": last_qty,
+                "buyOrderId": order["orderId"] if order and side == "Buy" else 0,
+                "sellOrderId": order["orderId"] if order and side == "Sell" else 0,
+                "timestamp": time.time(),
+                "source": "cpp-engine",
+            }
+            with state_lock:
+                trades.append(trade)
+            save_trade(db_path, trade)
+            record_ohlcv(db_path, symbol, last_px, last_qty)
+            broadcast_event("trade", trade)
+            if sym_id:
+                engine._update_snapshot(sym_id)
+                broadcast_event("snapshot", snapshots.get(sym_id, {}))
+
+
+cpp_bridge = CppEngineBridge()
+
 
 # ── SSE broadcasting ────────────────────────────────────────────────
 
@@ -291,7 +586,31 @@ def index():
 @app.route("/health")
 def health():
     return jsonify({"status": "ok", "session": session_status,
-                    "orders": len(orders), "trades": len(trades)})
+                    "orders": len(orders), "trades": len(trades),
+                    "engine_mode": engine_mode})
+
+@app.route("/engine/mode", methods=["GET", "POST"])
+def engine_mode_route():
+    global engine_mode
+    if request.method == "POST":
+        d = request.json
+        mode = d.get("mode", "python")
+        if mode not in ("python", "cpp"):
+            return jsonify({"error": "Invalid mode"}), 400
+        if mode == "cpp":
+            if not cpp_bridge.connect():
+                return jsonify({"error": "C++ engine not reachable",
+                                "host": cpp_bridge.host, "port": cpp_bridge.port}), 503
+        else:
+            cpp_bridge.disconnect()
+        engine_mode = mode
+        broadcast_event("engine_mode", {"mode": engine_mode})
+        print(f"[ENGINE] Switched to {mode.upper()} engine")
+        return jsonify({"mode": engine_mode})
+    return jsonify({"mode": engine_mode,
+                    "cpp_available": cpp_bridge.is_healthy(),
+                    "cpp_host": cpp_bridge.host,
+                    "cpp_port": cpp_bridge.port})
 
 @app.route("/data")
 def data():
@@ -302,6 +621,7 @@ def data():
             "snapshots": {k: v for k, v in snapshots.items()},
             "symbols": {k: v for k, v in symbols.items()},
             "session": session_status,
+            "engine_mode": engine_mode,
         })
 
 @app.route("/stream")
@@ -325,10 +645,19 @@ def stream():
                     headers={"Cache-Control": "no-cache",
                              "X-Accel-Buffering": "no"})
 
+def _active_engine():
+    return cpp_bridge if engine_mode == "cpp" else engine
+
 @app.route("/order/new", methods=["POST"])
 def new_order():
     d = request.json
-    order = engine.submit_order(
+    active = _active_engine()
+    if engine_mode == "cpp":
+        sym_name = symbols.get(int(d["symbolIdx"]), {}).get("name", "?")
+        log_message("OEG", f"[C++] NewOrder {sym_name} {d['side']} {d['quantity']}@{float(d.get('price',0)):.2f}",
+                    order_id=0)
+        log_message("FIX", f"[C++] 35=D → eunex_me:{cpp_bridge.port}", order_id=0)
+    order = active.submit_order(
         symbol_id=int(d["symbolIdx"]),
         side=d["side"],
         order_type=d.get("orderType", "Limit"),
@@ -343,7 +672,7 @@ def new_order():
 @app.route("/order/cancel", methods=["POST"])
 def cancel_order():
     d = request.json
-    result = engine.cancel_order(int(d["orderId"]))
+    result = _active_engine().cancel_order(int(d["orderId"]))
     if result:
         return jsonify(result)
     return jsonify({"error": "Order not found or not cancellable"}), 404
@@ -351,7 +680,7 @@ def cancel_order():
 @app.route("/order/amend", methods=["POST"])
 def amend_order():
     d = request.json
-    result = engine.amend_order(
+    result = _active_engine().amend_order(
         order_id=int(d["orderId"]),
         new_price=float(d["price"]) if "price" in d else None,
         new_quantity=int(d["quantity"]) if "quantity" in d else None,
