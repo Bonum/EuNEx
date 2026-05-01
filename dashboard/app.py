@@ -339,7 +339,7 @@ class CppEngineBridge:
         global next_order_id
         oid = next_order_id
         next_order_id += 1
-        cl_ord_id = cl_ord_id or f"D-{oid}"
+        cl_ord_id = cl_ord_id or str(oid)
 
         sym_name = symbols.get(symbol_id, {}).get("name", "???")
         fix_side = "1" if side == "Buy" else "2"
@@ -377,10 +377,13 @@ class CppEngineBridge:
 
         if self._connected:
             self._pending[cl_ord_id] = order
+            log_message("OEG", f"[C++] NewOrder {sym_name} {side} {quantity}@{price:.2f} → FIXAcceptor", order_id=oid)
+            log_message("Book", f"[C++] 35=D clOrdId={cl_ord_id} → OEGActor → MECoreActor", order_id=oid)
             self._send_fix(fields)
         else:
             order["status"] = "Rejected"
             order["remainingQty"] = quantity
+            log_message("OEG", f"[C++] NewOrder REJECTED — not connected", order_id=oid)
 
         with state_lock:
             orders.append(order)
@@ -515,40 +518,46 @@ class CppEngineBridge:
     def _handle_exec_report(self, fields):
         cl_ord_id = fields.get(11, "")
         exec_type = fields.get(150, "")
-        symbol = fields.get(55, "")
-        side = "Buy" if fields.get(54) == "1" else "Sell"
+        ord_status = fields.get(39, "")
         last_px = float(fields.get(31, 0))
         last_qty = int(fields.get(32, 0))
         leaves_qty = int(fields.get(151, 0))
 
         order = self._pending.get(cl_ord_id)
-        if order:
-            order["remainingQty"] = leaves_qty
-            if exec_type == "2":  # Fill
-                order["status"] = "Filled"
-            elif exec_type == "1":  # Partial
-                order["status"] = "PartiallyFilled"
-            elif exec_type == "4":  # Cancelled
-                order["status"] = "Cancelled"
-            elif exec_type == "8":  # Rejected
-                order["status"] = "Rejected"
-            save_order(db_path, order)
-            broadcast_event("order", order)
+        if not order:
+            return
 
-        if exec_type in ("1", "2") and last_qty > 0:
-            sym_id = None
-            for sid, info in symbols.items():
-                if info["name"] == symbol:
-                    sym_id = sid
-                    break
+        symbol = order.get("symbol", "?")
+        side = order.get("side", "?")
+        oid = order.get("orderId", "?")
+
+        order["remainingQty"] = leaves_qty
+        if exec_type == "F" or ord_status == "2":
+            if leaves_qty == 0:
+                order["status"] = "Filled"
+            else:
+                order["status"] = "PartiallyFilled"
+        elif exec_type == "0" or ord_status == "0":
+            order["status"] = "New"
+        elif exec_type == "4" or ord_status == "4":
+            order["status"] = "Cancelled"
+        elif exec_type == "8" or ord_status == "8":
+            order["status"] = "Rejected"
+        save_order(db_path, order)
+        broadcast_event("order", order)
+
+        log_message("MECore", f"[C++] ExecReport Order#{oid} → {order['status']}", order_id=oid)
+
+        if exec_type == "F" and last_qty > 0:
+            sym_id = order.get("symbolIdx", 0)
             trade = {
                 "tradeId": len(trades) + 1,
-                "symbolIdx": sym_id or 0,
+                "symbolIdx": sym_id,
                 "symbol": symbol,
                 "price": last_px,
                 "quantity": last_qty,
-                "buyOrderId": order["orderId"] if order and side == "Buy" else 0,
-                "sellOrderId": order["orderId"] if order and side == "Sell" else 0,
+                "buyOrderId": oid if side == "Buy" else 0,
+                "sellOrderId": oid if side == "Sell" else 0,
                 "timestamp": time.time(),
                 "source": "cpp-engine",
             }
@@ -556,6 +565,10 @@ class CppEngineBridge:
                 trades.append(trade)
             save_trade(db_path, trade)
             record_ohlcv(db_path, symbol, last_px, last_qty)
+            log_message("Match", f"[C++] Trade#{trade['tradeId']} {symbol} {last_qty}@{last_px:.2f}", order_id=oid)
+            log_message("Trade", f"[C++] Trade#{trade['tradeId']} persisted", order_id=oid, trade_id=trade["tradeId"])
+            log_message("DB", f"[C++] Trade#{trade['tradeId']} → SQLite", trade_id=trade["tradeId"])
+            log_message("CH", f"[C++] Trade#{trade['tradeId']} → clearing", order_id=oid, trade_id=trade["tradeId"])
             broadcast_event("trade", trade)
             if sym_id:
                 engine._update_snapshot(sym_id)
@@ -802,11 +815,6 @@ def _active_engine():
 def new_order():
     d = request.json
     active = _active_engine()
-    if engine_mode == "cpp":
-        sym_name = symbols.get(int(d["symbolIdx"]), {}).get("name", "?")
-        log_message("OEG", f"[C++] NewOrder {sym_name} {d['side']} {d['quantity']}@{float(d.get('price',0)):.2f}",
-                    order_id=0)
-        log_message("FIX", f"[C++] 35=D → eunex_me:{cpp_bridge.port}", order_id=0)
     order = active.submit_order(
         symbol_id=int(d["symbolIdx"]),
         side=d["side"],

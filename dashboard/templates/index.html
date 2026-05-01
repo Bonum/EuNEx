@@ -159,9 +159,11 @@ border-radius:6px;color:var(--text);font-size:12px}
 .stage-match{background:#f0c04022;color:var(--yellow);border:1px solid #f0c04044}
 .stage-trade{background:#7c5cfc22;color:var(--purple);border:1px solid #7c5cfc44}
 .stage-db{background:#ff6b6b22;color:var(--red);border:1px solid #ff6b6b44}
+.stage-mecore{background:#ff8c0022;color:#ff8c00;border:1px solid #ff8c0044}
 .stage-ch{background:#00d4aa22;color:var(--accent);border:1px solid #00d4aa44}
 .stage-oeg.active{background:#4a90d944;box-shadow:0 0 12px #4a90d944}
 .stage-book.active{background:#00d4aa44;box-shadow:0 0 12px #00d4aa44}
+.stage-mecore.active{background:#ff8c0044;box-shadow:0 0 12px #ff8c0044}
 .stage-match.active{background:#f0c04044;box-shadow:0 0 12px #f0c04044}
 .stage-trade.active{background:#7c5cfc44;box-shadow:0 0 12px #7c5cfc44}
 .stage-db.active{background:#ff6b6b44;box-shadow:0 0 12px #ff6b6b44}
@@ -172,7 +174,7 @@ border-radius:6px;color:var(--text);font-size:12px}
 @keyframes fadeFlow{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}
 .flow-ts{color:var(--muted);min-width:75px;font-size:10px}
 .flow-tag{min-width:50px;font-weight:600;font-size:10px;text-transform:uppercase}
-.flow-tag-oeg{color:var(--blue)}.flow-tag-book{color:var(--accent)}.flow-tag-match{color:var(--yellow)}
+.flow-tag-oeg{color:var(--blue)}.flow-tag-book{color:var(--accent)}.flow-tag-mecore{color:#ff8c00}.flow-tag-match{color:var(--yellow)}
 .flow-tag-trade{color:var(--purple)}.flow-tag-db{color:var(--red)}.flow-tag-ch{color:var(--accent)}
 .flow-detail{color:var(--text)}
 .flow-empty{padding:30px;text-align:center;color:var(--muted)}
@@ -363,12 +365,14 @@ border-radius:6px;color:var(--text);font-size:12px}
           <div class="flow-arrow" id="fa1">&#9654;</div>
           <div class="flow-stage stage-book" id="fpBook"><span class="count">-</span>Book</div>
           <div class="flow-arrow" id="fa2">&#9654;</div>
-          <div class="flow-stage stage-match" id="fpMatch"><span class="count">-</span>Match</div>
+          <div class="flow-stage stage-mecore" id="fpMECore"><span class="count">-</span>MECore</div>
           <div class="flow-arrow" id="fa3">&#9654;</div>
-          <div class="flow-stage stage-trade" id="fpTrade"><span class="count">-</span>Trade</div>
+          <div class="flow-stage stage-match" id="fpMatch"><span class="count">-</span>Match</div>
           <div class="flow-arrow" id="fa4">&#9654;</div>
-          <div class="flow-stage stage-db" id="fpDB"><span class="count">-</span>DB</div>
+          <div class="flow-stage stage-trade" id="fpTrade"><span class="count">-</span>Trade</div>
           <div class="flow-arrow" id="fa5">&#9654;</div>
+          <div class="flow-stage stage-db" id="fpDB"><span class="count">-</span>DB</div>
+          <div class="flow-arrow" id="fa6">&#9654;</div>
           <div class="flow-stage stage-ch" id="fpCH"><span class="count">-</span>CH</div>
         </div>
         <div class="flow-msgs" id="flowMsgs">
@@ -876,7 +880,7 @@ function renderOrderDetail(oid) {
   const o = flowOrderMap[oid];
   if (!o) return;
   const stages = new Set(o.entries.map(e => e.stage));
-  const stageOrder = ['OEG','Book','Match','Trade','DB','CH'];
+  const stageOrder = ['OEG','Book','MECore','Match','Trade','DB','CH'];
   const reachedIdx = Math.max(...stageOrder.map((s,i) => stages.has(s) ? i : -1));
 
   stageOrder.forEach((s, i) => {
