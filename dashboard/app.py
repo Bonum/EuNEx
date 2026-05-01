@@ -23,6 +23,8 @@ import threading
 import random
 import sys
 import os
+import signal
+import subprocess
 import urllib.request
 import urllib.error
 from collections import deque
@@ -562,6 +564,120 @@ class CppEngineBridge:
 
 cpp_bridge = CppEngineBridge()
 
+# ── C++ engine process management ──────────────────────────────────
+
+_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+_PID_DIR = os.path.join(_PROJECT_ROOT, ".pids")
+_EUNEX_ME_PATHS = [
+    os.path.join(_PROJECT_ROOT, "eunex_me"),
+    os.path.join(_PROJECT_ROOT, "build", "Release", "eunex_me"),
+    os.path.join(_PROJECT_ROOT, "build", "eunex_me"),
+    "/app/eunex_me",
+]
+
+_cpp_process = None
+_cpp_process_lock = threading.Lock()
+
+
+def _find_eunex_me():
+    for p in _EUNEX_ME_PATHS:
+        if os.path.isfile(p) and os.access(p, os.X_OK):
+            return p
+    return None
+
+
+def _kill_pid_file(name):
+    pidfile = os.path.join(_PID_DIR, f"{name}.pid")
+    if not os.path.isfile(pidfile):
+        return
+    try:
+        pid = int(open(pidfile).read().strip())
+        os.kill(pid, signal.SIGTERM)
+        for _ in range(20):
+            time.sleep(0.25)
+            try:
+                os.kill(pid, 0)
+            except OSError:
+                break
+        print(f"[ENGINE] Stopped {name} (PID {pid})")
+    except (ValueError, OSError):
+        pass
+    try:
+        os.remove(pidfile)
+    except OSError:
+        pass
+
+
+def _start_cpp_engine():
+    global _cpp_process
+    binary = _find_eunex_me()
+    if not binary:
+        return None, "eunex_me binary not found"
+
+    _kill_pid_file("fix_gateway")
+
+    time.sleep(0.5)
+
+    with _cpp_process_lock:
+        if _cpp_process and _cpp_process.poll() is None:
+            return _cpp_process, None
+        log_path = os.path.join(_PROJECT_ROOT, "logs", "eunex_me.log")
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        log_f = open(log_path, "w")
+        _cpp_process = subprocess.Popen(
+            [binary],
+            stdout=log_f, stderr=subprocess.STDOUT,
+            cwd=_PROJECT_ROOT,
+        )
+        print(f"[ENGINE] Started eunex_me (PID {_cpp_process.pid}) — log: {log_path}")
+
+    for i in range(30):
+        time.sleep(0.5)
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(1)
+            s.connect(("localhost", FIX_PORT))
+            s.close()
+            print(f"[ENGINE] eunex_me ready on port {FIX_PORT}")
+            return _cpp_process, None
+        except OSError:
+            pass
+
+    _stop_cpp_engine()
+    return None, "eunex_me started but not listening within 15s"
+
+
+def _stop_cpp_engine():
+    global _cpp_process
+    with _cpp_process_lock:
+        if _cpp_process and _cpp_process.poll() is None:
+            _cpp_process.terminate()
+            try:
+                _cpp_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                _cpp_process.kill()
+            print(f"[ENGINE] Stopped eunex_me (PID {_cpp_process.pid})")
+        _cpp_process = None
+
+
+def _restart_fix_gateway():
+    python = sys.executable
+    fix_script = os.path.join(_PROJECT_ROOT, "fix_gateway", "fix_server.py")
+    if not os.path.isfile(fix_script):
+        return
+    log_path = os.path.join(_PROJECT_ROOT, "logs", "fix_gateway.log")
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    log_f = open(log_path, "w")
+    proc = subprocess.Popen(
+        [python, fix_script],
+        stdout=log_f, stderr=subprocess.STDOUT,
+        cwd=_PROJECT_ROOT,
+    )
+    os.makedirs(_PID_DIR, exist_ok=True)
+    with open(os.path.join(_PID_DIR, "fix_gateway.pid"), "w") as f:
+        f.write(str(proc.pid))
+    print(f"[ENGINE] Restarted fix_gateway (PID {proc.pid})")
+
 
 # ── SSE broadcasting ────────────────────────────────────────────────
 
@@ -598,17 +714,27 @@ def engine_mode_route():
         if mode not in ("python", "cpp"):
             return jsonify({"error": "Invalid mode"}), 400
         if mode == "cpp":
+            if not _find_eunex_me():
+                return jsonify({"error": "eunex_me binary not found",
+                                "hint": "Build it: cd build && cmake .. && cmake --build ."}), 400
+            proc, err = _start_cpp_engine()
+            if err:
+                return jsonify({"error": err}), 503
             if not cpp_bridge.connect():
-                return jsonify({"error": "C++ engine not reachable",
+                _stop_cpp_engine()
+                _restart_fix_gateway()
+                return jsonify({"error": "C++ engine started but FIX handshake failed",
                                 "host": cpp_bridge.host, "port": cpp_bridge.port}), 503
         else:
             cpp_bridge.disconnect()
+            _stop_cpp_engine()
+            _restart_fix_gateway()
         engine_mode = mode
         broadcast_event("engine_mode", {"mode": engine_mode})
         print(f"[ENGINE] Switched to {mode.upper()} engine")
         return jsonify({"mode": engine_mode})
     return jsonify({"mode": engine_mode,
-                    "cpp_available": cpp_bridge.is_healthy(),
+                    "cpp_available": _find_eunex_me() is not None,
                     "cpp_host": cpp_bridge.host,
                     "cpp_port": cpp_bridge.port})
 

@@ -966,9 +966,12 @@ function fmt(v) { return v > 0 ? parseFloat(v).toFixed(2) : '-'; }
 async function toggleEngine(useCpp) {
   const mode = useCpp ? 'cpp' : 'python';
   const sw = document.getElementById('engineSwitch');
+  sw.disabled = true;
+  const labelR = document.getElementById('engineLabelR');
+  if (useCpp) labelR.textContent = 'C++ Starting…';
   try {
     const ctrl = new AbortController();
-    setTimeout(() => ctrl.abort(), 10000);
+    setTimeout(() => ctrl.abort(), 30000);
     const resp = await fetch('/engine/mode', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -979,17 +982,21 @@ async function toggleEngine(useCpp) {
     if (!text.startsWith('{')) throw new Error('Server not ready');
     const data = JSON.parse(text);
     if (!resp.ok) {
-      alert('C++ engine not available:\n' + (data.error || 'Connection failed') +
-            '\n\nStart eunex_me first:\n  ./build/Release/eunex_me');
+      alert('Engine switch failed:\n' + (data.error || 'Connection failed') +
+            (data.hint ? '\n\n' + data.hint : ''));
       sw.checked = false;
       updateEngineUI('python');
       return;
     }
     updateEngineUI(data.mode);
   } catch(e) {
-    alert('Failed to switch engine: ' + e.message);
+    const msg = e.name === 'AbortError' ? 'Timeout — engine took too long to start' : e.message;
+    alert('Failed to switch engine: ' + msg);
     sw.checked = false;
     updateEngineUI('python');
+  } finally {
+    sw.disabled = false;
+    labelR.textContent = 'C++';
   }
 }
 
