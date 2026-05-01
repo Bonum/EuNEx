@@ -21,7 +21,7 @@ RUN mkdir -p build && cd build && \
 FROM ubuntu:22.04
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    librdkafka1 python3 python3-pip nginx \
+    librdkafka1 librdkafka++1 python3 python3-pip nginx \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip3 install flask
