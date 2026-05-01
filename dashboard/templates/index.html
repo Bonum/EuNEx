@@ -414,7 +414,9 @@ function switchTab(name) {
 
 async function init() {
   const resp = await fetch('/data');
-  const d = await resp.json();
+  const text = await resp.text();
+  if (!text.startsWith('{')) { setTimeout(init, 2000); return; }
+  const d = JSON.parse(text);
   Object.assign(state, d);
   if (d.engine_mode) updateEngineUI(d.engine_mode);
   for (const [sid, info] of Object.entries(state.symbols)) {
@@ -970,7 +972,9 @@ async function toggleEngine(useCpp) {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({mode})
     });
-    const data = await resp.json();
+    const text = await resp.text();
+    if (!text.startsWith('{')) throw new Error('Server not ready');
+    const data = JSON.parse(text);
     if (!resp.ok) {
       alert('C++ engine not available:\n' + (data.error || 'Connection failed') +
             '\n\nStart eunex_me first:\n  ./build/Release/eunex_me');
@@ -1003,7 +1007,9 @@ function updateEngineUI(mode) {
 async function checkCppEngine() {
   try {
     const resp = await fetch('/engine/mode');
-    const data = await resp.json();
+    const text = await resp.text();
+    if (!text.startsWith('{')) return;
+    const data = JSON.parse(text);
     const dot = document.getElementById('engineDot');
     updateEngineUI(data.mode);
     if (data.cpp_available) {
