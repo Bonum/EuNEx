@@ -113,6 +113,13 @@ start_all() {
     echo -e "${CYAN}╚══════════════════════════════════════╝${NC}"
     echo ""
 
+    # Start nginx reverse proxy (needed for HF Spaces — port 7860)
+    if command -v nginx &>/dev/null; then
+        log "Starting nginx..."
+        nginx
+        ok "nginx started (port 7860 → dashboard:${DASHBOARD_PORT})"
+    fi
+
     start_dashboard
     sleep 2
     start_fix
