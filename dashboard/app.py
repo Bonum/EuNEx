@@ -280,7 +280,7 @@ class CppEngineBridge:
         self.host = host
         self.port = port
         self._sock = None
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._seq = 1
         self._recv_thread = None
         self._connected = False

@@ -967,10 +967,13 @@ async function toggleEngine(useCpp) {
   const mode = useCpp ? 'cpp' : 'python';
   const sw = document.getElementById('engineSwitch');
   try {
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 10000);
     const resp = await fetch('/engine/mode', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({mode})
+      body: JSON.stringify({mode}),
+      signal: ctrl.signal
     });
     const text = await resp.text();
     if (!text.startsWith('{')) throw new Error('Server not ready');
