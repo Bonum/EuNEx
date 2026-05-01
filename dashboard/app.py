@@ -617,7 +617,7 @@ HF_TOKEN = _read_hf_token()
 HF_MODEL = os.environ.get("HF_MODEL", "Qwen/Qwen2.5-7B-Instruct")
 
 ai_insights = deque(maxlen=20)
-ai_provider = "auto"
+ai_provider = os.environ.get("LLM_PROVIDER", "auto")
 ai_model_override = None
 ai_generating = False
 
