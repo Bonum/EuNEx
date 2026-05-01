@@ -579,6 +579,15 @@ _cpp_process = None
 _cpp_process_lock = threading.Lock()
 
 
+def _read_log_tail(path, lines=20):
+    try:
+        with open(path, "r") as f:
+            all_lines = f.readlines()
+        return "".join(all_lines[-lines:]).strip()
+    except Exception:
+        return "(no log output)"
+
+
 def _find_eunex_me():
     for p in _EUNEX_ME_PATHS:
         if os.path.isfile(p) and os.access(p, os.X_OK):
@@ -633,6 +642,12 @@ def _start_cpp_engine():
 
     for i in range(30):
         time.sleep(0.5)
+        rc = _cpp_process.poll()
+        if rc is not None:
+            log_tail = _read_log_tail(log_path, 20)
+            _cpp_process = None
+            _restart_fix_gateway()
+            return None, f"eunex_me exited with code {rc}\n\n{log_tail}"
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(1)
@@ -643,8 +658,10 @@ def _start_cpp_engine():
         except OSError:
             pass
 
+    log_tail = _read_log_tail(log_path, 20)
     _stop_cpp_engine()
-    return None, "eunex_me started but not listening within 15s"
+    _restart_fix_gateway()
+    return None, f"eunex_me started but not listening within 15s\n\n{log_tail}"
 
 
 def _stop_cpp_engine():
@@ -735,8 +752,15 @@ def engine_mode_route():
         return jsonify({"mode": engine_mode})
     return jsonify({"mode": engine_mode,
                     "cpp_available": _find_eunex_me() is not None,
+                    "cpp_binary": _find_eunex_me(),
                     "cpp_host": cpp_bridge.host,
                     "cpp_port": cpp_bridge.port})
+
+@app.route("/engine/log")
+def engine_log():
+    log_path = os.path.join(_PROJECT_ROOT, "logs", "eunex_me.log")
+    tail = _read_log_tail(log_path, 50)
+    return Response(tail or "(no log)", mimetype="text/plain")
 
 @app.route("/data")
 def data():
