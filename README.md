@@ -27,7 +27,7 @@ ch_ai_trader.py          →   ClearingHouseActor        →   Clearing House (P
   AI strategies          →   AITraderActor             →   Trading obligations
 ```
 
-## Actor Topology (v0.8)
+## Actor Topology (v0.9)
 
 ```
  Core 0: OEGActor + FIXAcceptorActor     ← Order entry & FIX protocol
@@ -35,6 +35,43 @@ ch_ai_trader.py          →   ClearingHouseActor        →   Clearing House (P
  Core 2: MDGActor                         ← Market data snapshots
  Core 3: ClearingHouseActor + AITrader    ← Post-trade & AI members
 ```
+
+## Dual Engine Architecture
+
+The dashboard can run in two modes, switchable at runtime via a toggle in the UI:
+
+```
+                          ┌───────────────────────────────────┐
+                          │           Browser (:8090)          │
+                          │     [Python ○────● C++] toggle     │
+                          └──────────────┬────────────────────┘
+                                         │
+                          ┌──────────────▼────────────────────┐
+                          │       Dashboard (Flask :8090)      │
+                          │                                    │
+                          │  ┌────────────┐  ┌─────────────┐  │
+                          │  │  Python ME  │  │ C++ Bridge  │  │
+                          │  │MatchingEng │  │ FIX 4.4 TCP │  │
+                          │  │(built-in)  │  │  client     │  │
+                          │  └──────┬─────┘  └──────┬──────┘  │
+                          │   mode=python      mode=cpp       │
+                          └──────────────────────────┼────────┘
+                                                     │ FIX 4.4 TCP
+                                                     ▼
+                          ┌──────────────────────────────────────┐
+                          │       C++ Matching Engine             │
+                          │       eunex_me (:9001)               │
+                          │                                      │
+                          │  OEG → MECore → MDG → ClearingHouse  │
+                          │  FIXAcceptorActor (TCP :9001)        │
+                          │  Multi-threaded actors               │
+                          └──────────────────────────────────────┘
+```
+
+| Mode | Engine | How orders are matched | Use case |
+|------|--------|----------------------|----------|
+| **Python** | Built-in `MatchingEngine` | In-process, same Flask app | Demo, learning, no compilation needed |
+| **C++** | `eunex_me` via FIX 4.4 | TCP to C++ actors on port 9001 | Production-like, microsecond latency |
 
 ## Service Architecture
 
@@ -54,6 +91,7 @@ ch_ai_trader.py          →   ClearingHouseActor        →   Clearing House (P
 │ OHLCV History   │ │ Portfolios      │ │ Amend/ExecRpt   │
 │ SQLite DB       │ │ Settlements     │ │                  │
 │ SSE Streaming   │ │                 │ │                  │
+│ Engine Switch   │ │ LLM Trading     │ │                  │
 └────────┬────────┘ └────────┬────────┘ └────────┬────────┘
          │                   │                    │
          └───────────────────┴────────────────────┘
@@ -106,11 +144,13 @@ docker compose up --build
 cmake -B build -DEUNEX_BUILD_TESTS=ON
 cmake --build build --config Release
 
-# Run matching engine
+# Run matching engine (FIX server on port 9001)
 ./build/Release/eunex_me
 
 # Run all tests (7 suites)
 cd build && ctest -C Release
+
+# Use with dashboard: start eunex_me, then toggle "C++" in the dashboard header
 ```
 
 ## With Kafka Persistence
@@ -267,7 +307,8 @@ EuNEx/
 5. ~~Market simulation~~ ✓ Realistic AI trading + Dashboard auto-simulation
 6. ~~AI Analyst~~ ✓ Ollama/Groq/HuggingFace market commentary
 7. ~~Message Flow Visualizer~~ ✓ Developer pipeline tracing tool
-8. **SBE encoding** — replace event structs with SBE-encoded messages
-9. **Master/Mirror failover** — implement full Recovery replay on Mirror node
-10. **Trading phases** — pre-open, uncrossing, continuous, close, TAL
-11. **Additional order types** — Stop, Pegged, Mid-Point, Iceberg
+8. ~~Engine Mode Switch~~ ✓ Python ↔ C++ toggle with FIX 4.4 bridge
+9. **SBE encoding** — replace event structs with SBE-encoded messages
+10. **Master/Mirror failover** — implement full Recovery replay on Mirror node
+11. **Trading phases** — pre-open, uncrossing, continuous, close, TAL
+12. **Additional order types** — Stop, Pegged, Mid-Point, Iceberg

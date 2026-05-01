@@ -1,6 +1,6 @@
 # EuNEx Developers Guide
 
-**Version 0.8.0** | Euronext Optiq-Modeled Exchange Simulator
+**Version 0.9.5** | Euronext Optiq-Modeled Exchange Simulator
 
 ---
 
@@ -22,10 +22,11 @@
 14. [Market Simulation](#14-market-simulation)
 15. [AI Market Analyst](#15-ai-market-analyst)
 16. [Developer Message Flow Visualizer](#16-developer-message-flow-visualizer)
-17. [Project Structure](#17-project-structure)
-18. [Build & Test](#18-build--test)
-19. [Configuration](#19-configuration)
-20. [Extending EuNEx](#20-extending-eunex)
+17. [Engine Mode Switch](#17-engine-mode-switch)
+18. [Project Structure](#18-project-structure)
+19. [Build & Test](#19-build--test)
+20. [Configuration](#20-configuration)
+21. [Extending EuNEx](#21-extending-eunex)
 
 ---
 
@@ -35,7 +36,7 @@ EuNEx (Euronext Exchange Simulator) is a C++20 actor-based matching engine that 
 
 ```
   ┌─────────────────────────────────────────────────────────────────────┐
-  │                         EuNEx v0.4.0                                │
+  │                         EuNEx v0.9.5                                │
   │                                                                     │
   │   FIX 4.4 Clients ──► OEG ──► ME (per symbol) ──► MDG             │
   │                         │                    │                       │
@@ -824,7 +825,7 @@ docker compose up --build
  │  │ MBR03  │ 202       │ Random         │ Noise trader │                  │
  │  │ MBR04  │ 203       │ Momentum       │              │                  │
  │  │ ...    │ ...       │ (rotates)      │              │                  │
- │  │ MBR10  │ 209       │ MeanReversion  │              │                  │
+ │  │ MBR10  │ 209       │ Random         │              │                  │
  │  └────────┴───────────┴────────────────┴──────────────┘                  │
  │                                                                          │
  │  Strategy Details:                                                      │
@@ -843,6 +844,13 @@ docker compose up --build
  │  │  RANDOM:                                                         │    │
  │  │    random side (50/50), random qty (10-100)                     │    │
  │  │    price around midpoint with random spread                     │    │
+ │  │                                                                  │    │
+ │  │  LLM (Python CH only):                                          │    │
+ │  │    sends portfolio + market data to LLM                         │    │
+ │  │    expects JSON response: symbol, side, quantity, price, reason │    │
+ │  │    uses same provider chain as AI Analyst                       │    │
+ │  │    falls back to random on LLM failure                          │    │
+ │  │    explanations shown in CH dashboard panel                     │    │
  │  │                                                                  │    │
  │  └──────────────────────────────────────────────────────────────────┘    │
  │                                                                          │
@@ -1045,7 +1053,112 @@ The visualizer uses Python function patching to intercept the matching engine me
 
 ---
 
-## 17. Project Structure
+## 17. Engine Mode Switch
+
+The dashboard supports two matching engine backends, switchable at runtime via a toggle in the header.
+
+### Architecture
+
+```
+ ┌──────────────────────────────────────────────────────────────────────────┐
+ │  Dashboard (Flask :8090)                                                 │
+ │                                                                          │
+ │  ┌─────────────────────────────┐    ┌─────────────────────────────┐     │
+ │  │  Python MatchingEngine       │    │  CppEngineBridge             │     │
+ │  │  (built-in, default)         │    │  (FIX 4.4 TCP client)        │     │
+ │  │                              │    │                              │     │
+ │  │  • In-process order book     │    │  • Connects to :9001         │     │
+ │  │  • Price-time priority       │    │  • Sends NewOrderSingle(D)   │     │
+ │  │  • No compilation needed     │    │  • Sends CancelRequest (F)   │     │
+ │  │  • SQLite persistence        │    │  • Sends CancelReplace (G)   │     │
+ │  │  • Good for demos            │    │  • Receives ExecReport (8)   │     │
+ │  └──────────────────────────────┘    │  • Logon/Logout/Heartbeat    │     │
+ │                                      └──────────────┬───────────────┘     │
+ │        _active_engine()                             │                     │
+ │        returns engine or cpp_bridge                 │                     │
+ │        based on engine_mode variable                │                     │
+ └─────────────────────────────────────────────────────┼─────────────────────┘
+                                                       │
+                                              FIX 4.4 TCP :9001
+                                                       │
+                                                       ▼
+                                       ┌───────────────────────────┐
+                                       │  eunex_me (C++ engine)    │
+                                       │  FIXAcceptorActor :9001   │
+                                       │  OEG → MECore → MDG → CH │
+                                       └───────────────────────────┘
+```
+
+### Switching Modes
+
+**From the UI:**
+The header contains a toggle switch `[Python ○──── C++]` with a status dot:
+- **Green dot**: C++ engine is running and reachable on port 9001
+- **Red dot**: C++ engine not detected
+- Health check runs every 15 seconds
+
+**From the API:**
+```bash
+# Check current mode and C++ availability
+GET /engine/mode
+→ {"mode": "python", "cpp_available": true, "cpp_host": "localhost", "cpp_port": 9001}
+
+# Switch to C++ engine
+POST /engine/mode  {"mode": "cpp"}
+→ {"mode": "cpp"}
+
+# Switch back to Python
+POST /engine/mode  {"mode": "python"}
+→ {"mode": "python"}
+```
+
+### Order Routing
+
+When `engine_mode == "cpp"`:
+1. Dashboard builds a FIX `NewOrderSingle` (35=D) message
+2. Sends it over TCP to `eunex_me:9001`
+3. C++ engine matches and returns `ExecutionReport` (35=8)
+4. Bridge parses the response and updates dashboard state (orders, trades, snapshots)
+5. SSE events broadcast to browser as usual
+
+When `engine_mode == "python"`:
+- Orders processed by the built-in `MatchingEngine` class (default behavior)
+
+**Simulation orders** (`source=sim`, `source=seed`) always use the Python engine regardless of mode.
+
+### FIX Message Flow (C++ Mode)
+
+```
+ Browser                Dashboard                C++ Engine
+ ───────                ─────────                ──────────
+   │  POST /order/new      │                          │
+   │ ─────────────────►    │                          │
+   │                       │  35=D NewOrderSingle     │
+   │                       │ ────────────────────►    │
+   │                       │                     Book::newOrder()
+   │                       │                     match → Trade
+   │                       │  35=8 ExecutionReport    │
+   │                       │ ◄────────────────────    │
+   │                       │  update state, SSE       │
+   │  SSE: order, trade    │                          │
+   │ ◄─────────────────    │                          │
+```
+
+### Connection Lifecycle
+
+```
+ Toggle ON (→ C++)                Toggle OFF (→ Python)
+ ═══════════════════              ════════════════════════
+ 1. TCP connect(:9001)            1. Send FIX Logout (35=5)
+ 2. Send FIX Logon (35=A)        2. Close TCP socket
+ 3. Start recv thread             3. Set mode = "python"
+ 4. Set mode = "cpp"              4. Orders route to MatchingEngine
+ 5. Orders route to bridge
+```
+
+---
+
+## 18. Project Structure
 
 ```
  EuNEx/
@@ -1088,6 +1201,25 @@ The visualizer uses Python function patching to intercept the matching engine me
  │       ├── PersistenceStore.hpp       Store interface
  │       └── KafkaStore.hpp             Kafka adapter (optional, librdkafka)
  │
+ ├── dashboard/
+ │   ├── app.py                          Flask dashboard + dual engine bridge
+ │   ├── database.py                     SQLite (orders, trades, OHLCV)
+ │   └── templates/index.html            Trading UI with engine toggle
+ │
+ ├── clearing_house/
+ │   ├── app.py                          Flask CH portal + API
+ │   ├── ch_database.py                  SQLite (members, holdings)
+ │   ├── ch_ai_trader.py                 AI trading (momentum/mean_revert/random/llm)
+ │   └── templates/                      CH web UI (leaderboard, portfolios)
+ │
+ ├── fix_gateway/
+ │   └── fix_server.py                   Python FIX 4.4 TCP acceptor
+ │
+ ├── shared/
+ │   └── config.py                       Centralized config (auto-loads .env)
+ │
+ ├── .env                                LLM and service configuration
+ │
  ├── tests/
  │   ├── test_orderbook.cpp            Book unit tests (26 cases)
  │   ├── test_matching_engine.cpp      ME integration tests
@@ -1107,7 +1239,7 @@ The visualizer uses Python function patching to intercept the matching engine me
 
 ---
 
-## 18. Build & Test
+## 19. Build & Test
 
 ### Prerequisites
 
@@ -1166,7 +1298,7 @@ cd build && ctest -C Release --output-on-failure
 
 ---
 
-## 19. Configuration
+## 20. Configuration
 
 ### Runtime Configuration (main.cpp)
 
@@ -1195,7 +1327,7 @@ The engine pre-populates order books with spread-defining orders:
 
 ---
 
-## 20. Extending EuNEx
+## 21. Extending EuNEx
 
 ### Adding a New Symbol
 
@@ -1230,8 +1362,8 @@ The engine pre-populates order books with spread-defining orders:
 ### Future Roadmap
 
 ```
- Current (v0.6)                    Planned
- ══════════════                    ═══════════════════════════════════
+ Current (v0.9.5)                  Planned
+ ════════════════                  ═══════════════════════════════════
 
  ✓ Limit + Market + Stop orders    □ Pegged, Mid-Point, Iceberg
  ✓ IOC, FOK, Day                   □ GTD, GTC, VFU, VFCU
@@ -1244,17 +1376,16 @@ The engine pre-populates order books with spread-defining orders:
  ✓ Clearing house + AI traders     □ EuroCCP/LCH integration
  ✓ IACA fragments                  □ IACA FINISH + COPY + IDS
  ✓ Python bridge (JSON)            □ SBE multicast MDG
- ✓ Market simulation (C++ + Py)    □ SBE multicast MDG
- ✓ Ticker tape + OHLCV charts      □ Multi-day backtesting
- ✓ Daily close persistence          □ Real Simplx multi-core
- ✓ AI Analyst (Ollama/Groq/HF)     □ EuroCCP/LCH integration
- ✓ Message Flow Visualizer          □ FIX 5.0 SP2 + SBE binary
-                                    □ SQLite trade persistence
-                                    □ Developer message visualizer
-                                    □ SATURN ARM (MiFID II RTS 22)
-                                    □ PTB (Post-Trade Box)
+ ✓ Market simulation (C++ + Py)    □ Multi-day backtesting
+ ✓ Ticker tape + OHLCV charts      □ SATURN ARM (MiFID II RTS 22)
+ ✓ Daily close persistence          □ PTB (Post-Trade Box)
+ ✓ AI Analyst (Ollama/Groq/HF)
+ ✓ LLM trading strategy (CH)
+ ✓ Message Flow Visualizer
+ ✓ Engine mode switch (Py ↔ C++)
+ ✓ .env auto-loading config
 ```
 
 ---
 
-*Generated for EuNEx v0.6.0 — Euronext Optiq Architecture Simulator*
+*Generated for EuNEx v0.9.5 — Euronext Optiq Architecture Simulator*
